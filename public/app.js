@@ -108,23 +108,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       checkInterval.textContent = `${data.intervalSeconds || '-'}초`;
       registeredDevices.textContent = `${data.registeredDevicesCount || 0}대`;
 
-      if (!settingsUrl.value && data.targetUrl) {
-        settingsUrl.value = data.targetUrl;
-      }
-      if (!isNewTargetDraft && !settingsKeyword.value && data.keyword) {
-        settingsKeyword.value = data.keyword;
-      }
-      if (!isNewTargetDraft && !settingsCssSelector.value && data.cssSelector) {
-        settingsCssSelector.value = data.cssSelector;
-      }
-      if (!isNewTargetDraft && data.condition) {
-        const radioCondition = document.getElementById(`condition-${data.condition}`);
-        if (radioCondition) {
-          radioCondition.checked = true;
+      // 사용자가 직접 저장한 적이 있는 세션에서만 서버 설정값을 입력란에 자동 점유 (신규 접속 시 공란 유지)
+      const hasUserSaved = sessionStorage.getItem('userHasSavedSettings') === 'true';
+      if (hasUserSaved) {
+        if (!settingsUrl.value && data.targetUrl) {
+          settingsUrl.value = data.targetUrl;
         }
-      }
-      if (!isNewTargetDraft && intervalInput.value === '30' && data.intervalSeconds) {
-        intervalInput.value = data.intervalSeconds;
+        if (!isNewTargetDraft && !settingsKeyword.value && data.keyword) {
+          settingsKeyword.value = data.keyword;
+        }
+        if (!isNewTargetDraft && !settingsCssSelector.value && data.cssSelector) {
+          settingsCssSelector.value = data.cssSelector;
+        }
+        if (!isNewTargetDraft && data.condition) {
+          const radioCondition = document.getElementById(`condition-${data.condition}`);
+          if (radioCondition) {
+            radioCondition.checked = true;
+          }
+        }
+        if (!isNewTargetDraft && intervalInput.value === '30' && data.intervalSeconds) {
+          intervalInput.value = data.intervalSeconds;
+        }
       }
     } catch (error) {
       console.error('[대시보드] 상태 업데이트 실패.', error);
@@ -405,6 +409,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const errData = await response.json();
       throw new Error(errData.error || '설정 저장에 실패했습니다.');
     }
+
+    // 사용자가 직접 저장했다는 세션 플래그 기록 (이 이후부터 서버 설정값이 입력란에 자동 반영됨)
+    sessionStorage.setItem('userHasSavedSettings', 'true');
 
     await updateStatus();
   }
