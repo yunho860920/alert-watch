@@ -19,7 +19,7 @@
       </span>
       <span>
         <strong>Alert Watch</strong>
-        <small>재입고 감시자</small>
+        <small>재입고 알리미</small>
       </span>
     </a>
 
@@ -42,11 +42,11 @@
           <i class="fa-solid fa-satellite-dish"></i>
           상태 변화 감시 대시보드
         </p>
-        <h1 id="page-title">재입고와 취소표를<br>조용히 지켜봅니다.</h1>
-        <p class="hero-copy">품절 문구와 옵션 변화를 확인해 구매 가능 신호가 생기면 브라우저 푸시로 알려줍니다.</p>
+        <h1 id="page-title">품절된 상품의<br>재입고를 기다립니다.</h1>
+        <p class="hero-copy">지정한 상품 페이지의 품절 상태와 옵션을 실시간으로 확인하여, 살 수 있게 되면 즉시 알림을 보냅니다.</p>
       </div>
       <div class="hero-summary" aria-label="현재 감시 요약">
-        <span class="summary-label">현재 감지</span>
+        <span class="summary-label">현재 상품 상태</span>
         <div id="hero-status-text">상태 확인 중</div>
       </div>
     </section>
@@ -56,41 +56,41 @@
         <div class="panel-head">
           <div>
             <p class="section-kicker">Monitor</p>
-            <h2 id="status-title">모니터링 상태</h2>
+            <h2 id="status-title">실시간 확인 현황</h2>
           </div>
           <div class="live-pill">
             <span id="monitoring-pulse" class="pulse-dot"></span>
-            <span id="monitoring-text">확인 중</span>
+            <span id="monitoring-text">확인하는 중</span>
           </div>
         </div>
 
         <div class="status-stage">
-          <span class="stage-label">Current Detection</span>
+          <span class="stage-label">현재 판매 상태</span>
           <div id="ticket-status-badge" class="badge unknown">
             <i class="fa-solid fa-spinner fa-spin"></i>
-            확인 중
+            확인하는 중
           </div>
           <div id="options-list-container" class="options-list-container"></div>
         </div>
 
         <dl class="metric-grid">
           <div>
-            <dt>마지막 확인</dt>
+            <dt>최근 확인 시간</dt>
             <dd id="last-check-time">-</dd>
           </div>
           <div>
-            <dt>감시 주기</dt>
+            <dt>확인 주기</dt>
             <dd id="check-interval">-</dd>
           </div>
           <div>
-            <dt>등록 기기</dt>
+            <dt>알림 수신 기기</dt>
             <dd id="registered-devices">0대</dd>
           </div>
         </dl>
 
         <button id="toggle-monitor-btn" class="primary-action neutral" type="button">
           <i class="fa-solid fa-play"></i>
-          <span>모니터링 시작</span>
+          <span>감시 시작하기</span>
         </button>
       </section>
 
@@ -124,51 +124,51 @@
         <div class="panel-head">
           <div>
             <p class="section-kicker">Target</p>
-            <h2 id="settings-title">감시 대상 설정</h2>
+            <h2 id="settings-title">알림 받을 상품 정보</h2>
           </div>
           <i class="fa-solid fa-sliders panel-icon" aria-hidden="true"></i>
         </div>
 
         <div class="form-grid">
           <label class="field span-2" for="settings-url">
-            <span>대상 URL</span>
-            <input type="url" id="settings-url" placeholder="https://example.com/product" required>
+            <span>상품 페이지 주소 (URL)</span>
+            <input type="url" id="settings-url" placeholder="https://구매하고싶은상품주소.com" required>
           </label>
 
           <label class="field" for="settings-keyword">
-            <span>상태 키워드</span>
-            <input type="text" id="settings-keyword" placeholder="품절, 매진, 신청하기" required>
-            <small>품절 여부를 판단할 문구를 입력합니다.</small>
+            <span>품절 표시 문구</span>
+            <input type="text" id="settings-keyword" placeholder="예: 품절, SOLD OUT, 매진" required>
+            <small>상품 페이지에 적혀 있는 품절 안내 문구를 그대로 적어주세요.</small>
           </label>
 
           <label class="field" for="settings-css-selector">
-            <span>옵션 또는 선택자</span>
-            <input type="text" id="settings-css-selector" placeholder="예: 98/104 또는 .soldout">
-            <small>비우면 페이지 전체 또는 전체 옵션을 분석합니다.</small>
+            <span>구매할 옵션명 (선택)</span>
+            <input type="text" id="settings-css-selector" placeholder="예: 블랙 M, 235 (비워두면 상품 전체 감시)">
+            <small>특정 사이즈나 색상만 감시하고 싶을 때 그 옵션명을 적어주세요.</small>
           </label>
 
           <fieldset class="condition-box span-2">
-            <legend>알림 조건</legend>
+            <legend>언제 알림을 보낼까요?</legend>
             <label>
               <input type="radio" name="settings-condition" id="condition-disappear" value="disappear" checked>
               <span>
-                <strong>키워드가 사라질 때</strong>
-                <small>예: 품절 문구가 없어지면 구매 가능으로 판단합니다.</small>
+                <strong>품절 문구가 사라졌을 때 (재입고됨)</strong>
+                <small>예: '품절' 문구가 없어지면 살 수 있는 상태로 판단하고 알림을 보냅니다.</small>
               </span>
             </label>
             <label>
               <input type="radio" name="settings-condition" id="condition-appear" value="appear">
               <span>
-                <strong>키워드가 나타날 때</strong>
-                <small>예: 신청하기 문구가 나타나면 알림을 보냅니다.</small>
+                <strong>특정 문구가 새로 나타났을 때 (판매 시작)</strong>
+                <small>예: '구매하기'나 '신청하기' 문구가 새로 나타나면 알림을 보냅니다.</small>
               </span>
             </label>
           </fieldset>
 
           <label class="field" for="settings-interval">
-            <span>감시 주기</span>
+            <span>재입고 확인 간격</span>
             <input type="number" id="settings-interval" min="5" max="3600" value="30">
-            <small>초 단위로 입력합니다.</small>
+            <small>초 단위로 입력합니다. (최소 5초 이상)</small>
           </label>
         </div>
 
@@ -177,11 +177,11 @@
         <div class="settings-actions">
           <button id="check-feasibility-btn" class="secondary-action large" type="button">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <span>감시 가능 여부 진단</span>
+            <span>정상 작동하는지 테스트해보기</span>
           </button>
           <button id="save-settings-btn" class="primary-action" type="button">
             <i class="fa-solid fa-floppy-disk"></i>
-            <span>설정 저장 및 시작</span>
+            <span>알림 감시 설정 저장 및 시작</span>
           </button>
         </div>
       </section>

@@ -127,14 +127,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       monitoringPulse.classList.add('active');
       monitoringText.textContent = '감시 중';
       toggleMonitorBtn.className = 'primary-action stop running';
-      toggleMonitorBtn.innerHTML = '<i class="fa-solid fa-square"></i><span>모니터링 중지</span>';
+      toggleMonitorBtn.innerHTML = '<i class="fa-solid fa-square"></i><span>감시 일시중지</span>';
       return;
     }
 
     monitoringPulse.classList.remove('active');
-    monitoringText.textContent = '대기 중';
+    monitoringText.textContent = '일시중지';
     toggleMonitorBtn.className = 'primary-action neutral';
-    toggleMonitorBtn.innerHTML = '<i class="fa-solid fa-play"></i><span>모니터링 시작</span>';
+    toggleMonitorBtn.innerHTML = '<i class="fa-solid fa-play"></i><span>감시 시작</span>';
   }
 
   function updateStatusBadge(status, availableOptions = []) {
@@ -142,8 +142,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (status === 'SOLD_OUT') {
       ticketStatusBadge.classList.add('soldout');
-      ticketStatusBadge.innerHTML = '<i class="fa-solid fa-lock"></i><span>품절 유지</span>';
-      heroStatusText.textContent = '아직 구매 가능 신호가 없습니다.';
+      ticketStatusBadge.innerHTML = '<i class="fa-solid fa-lock"></i><span>아직 품절</span>';
+      heroStatusText.textContent = '아직 구매 가능한 신호가 없습니다.';
       return;
     }
 
@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     ticketStatusBadge.classList.add('unknown');
-    ticketStatusBadge.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i><span>상태 확인 중</span>';
+    ticketStatusBadge.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i><span>확인하는 중</span>';
     heroStatusText.textContent = '페이지 상태를 확인하는 중입니다.';
   }
 
@@ -286,7 +286,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     isBtnLocked = true;
     checkFeasibilityBtn.disabled = true;
-    checkFeasibilityBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>진단 중</span>';
+    checkFeasibilityBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>테스트 중</span>';
     diagnosticResult.textContent = '';
     diagnosticResult.className = 'diagnostic-result hide';
 
@@ -329,7 +329,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } finally {
       isBtnLocked = false;
       checkFeasibilityBtn.disabled = false;
-      checkFeasibilityBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i><span>감시 가능 여부 진단</span>';
+      checkFeasibilityBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i><span>정상 작동하는지 테스트해보기</span>';
     }
   });
 
@@ -378,13 +378,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       await saveSettings();
-      alert('설정을 저장하고 모니터링을 시작했습니다.');
+      alert('알림 설정을 저장하고 감시를 시작했습니다.');
     } catch (error) {
       alert(`설정 저장 실패. ${error.message}`);
     } finally {
       isBtnLocked = false;
       saveSettingsBtn.disabled = false;
-      saveSettingsBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i><span>설정 저장 및 시작</span>';
+      saveSettingsBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i><span>알림 감시 설정 저장 및 시작</span>';
     }
   });
 
