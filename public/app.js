@@ -26,6 +26,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentSubscription = null;
   let lastKnownTargetUrl = '';
   let detectionFieldsResetForUrl = '';
+  let lastRawCheckTime = '';
+  let localLastCheckTime = null;
 
   if ('serviceWorker' in navigator && 'PushManager' in window) {
     try {
@@ -62,7 +64,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       updateStatusBadge(data.lastStatus, data.availableOptions);
       renderOptionsList(data.allOptions);
 
-      lastCheckTime.textContent = data.lastCheckTime || '기록 없음';
+      if (data.lastCheckTime) {
+        if (lastRawCheckTime !== data.lastCheckTime) {
+          lastRawCheckTime = data.lastCheckTime;
+          localLastCheckTime = Date.now();
+        }
+        renderLastCheckTime();
+      } else {
+        lastCheckTime.textContent = '기록 없음';
+      }
       checkInterval.textContent = `${data.intervalSeconds || '-'}초`;
       registeredDevices.textContent = `${data.registeredDevicesCount || 0}대`;
 
@@ -444,6 +454,30 @@ document.addEventListener('DOMContentLoaded', async () => {
       updatePushUI();
     }
   });
+
+  function renderLastCheckTime() {
+    if (!localLastCheckTime || !lastRawCheckTime) {
+      return;
+    }
+    const diffMs = Date.now() - localLastCheckTime;
+    const diffSec = Math.floor(diffMs / 1000);
+
+    let relativeText = '';
+    if (diffSec < 5) {
+      relativeText = '방금 전';
+    } else if (diffSec < 60) {
+      relativeText = `${diffSec}초 전`;
+    } else {
+      const min = Math.floor(diffSec / 60);
+      const sec = diffSec % 60;
+      relativeText = `${min}분 ${sec}초 전`;
+    }
+
+    lastCheckTime.textContent = `${lastRawCheckTime} (${relativeText})`;
+  }
+
+  // 상대 시간을 실시간으로 1초마다 업데이트
+  setInterval(renderLastCheckTime, 1000);
 
   updateStatus();
   setInterval(updateStatus, 4000);
