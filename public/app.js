@@ -27,7 +27,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastKnownTargetUrl = '';
   let detectionFieldsResetForUrl = '';
   let lastRawCheckTime = '';
+  let localFormattedCheckTime = '';
   let localLastCheckTime = null;
+
+  function parseServerDate(dateStr) {
+    if (!dateStr) return null;
+    let parsed = new Date(dateStr);
+    
+    if (dateStr.includes('AM') || dateStr.includes('PM') || dateStr.includes('/')) {
+      if (!dateStr.toLowerCase().includes('utc') && !dateStr.toLowerCase().includes('gmt')) {
+        const utcParsed = new Date(dateStr + ' UTC');
+        if (!isNaN(utcParsed.getTime())) {
+          parsed = utcParsed;
+        }
+      }
+    }
+    
+    if (isNaN(parsed.getTime())) {
+      const normalized = dateStr
+        .replace('오후', 'PM')
+        .replace('오전', 'AM')
+        .replace(/\./g, '/');
+      parsed = new Date(normalized);
+    }
+    
+    return parsed;
+  }
 
   if ('serviceWorker' in navigator && 'PushManager' in window) {
     try {
@@ -68,6 +93,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (lastRawCheckTime !== data.lastCheckTime) {
           lastRawCheckTime = data.lastCheckTime;
           localLastCheckTime = Date.now();
+          
+          const parsed = parseServerDate(data.lastCheckTime);
+          if (parsed && !isNaN(parsed.getTime())) {
+            localFormattedCheckTime = parsed.toLocaleString();
+          } else {
+            localFormattedCheckTime = data.lastCheckTime;
+          }
         }
         renderLastCheckTime();
       } else {
@@ -456,7 +488,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   function renderLastCheckTime() {
-    if (!localLastCheckTime || !lastRawCheckTime) {
+    if (!localLastCheckTime || !localFormattedCheckTime) {
       return;
     }
     const diffMs = Date.now() - localLastCheckTime;
@@ -473,7 +505,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       relativeText = `${min}분 ${sec}초 전`;
     }
 
-    lastCheckTime.textContent = `${lastRawCheckTime} (${relativeText})`;
+    lastCheckTime.textContent = `${localFormattedCheckTime} (${relativeText})`;
   }
 
   // 상대 시간을 실시간으로 1초마다 업데이트
