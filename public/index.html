@@ -170,6 +170,18 @@
             <input type="number" id="settings-interval" min="5" max="3600" value="30">
             <small>초 단위로 입력합니다. (최소 5초 이상)</small>
           </label>
+
+          <label class="field" for="settings-alert-repeat-count">
+            <span>알림 반복 횟수</span>
+            <input type="number" id="settings-alert-repeat-count" min="1" max="20" value="1">
+            <small>재입고 감지 시 알림을 몇 번 보낼지 설정합니다. (1~20회)</small>
+          </label>
+
+          <label class="field" for="settings-alert-repeat-interval">
+            <span>알림 반복 간격</span>
+            <input type="number" id="settings-alert-repeat-interval" min="5" max="3600" value="30">
+            <small>반복 알림 사이 간격을 초 단위로 입력합니다. (최소 5초)</small>
+          </label>
         </div>
 
         <div id="diagnostic-result" class="diagnostic-result hide" role="status"></div>

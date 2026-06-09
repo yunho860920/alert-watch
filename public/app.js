@@ -15,6 +15,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const checkFeasibilityBtn = document.getElementById('check-feasibility-btn');
   const saveSettingsBtn = document.getElementById('save-settings-btn');
   const intervalInput = document.getElementById('settings-interval');
+  const alertRepeatCountInput = document.getElementById('settings-alert-repeat-count');
+  const alertRepeatIntervalInput = document.getElementById('settings-alert-repeat-interval');
   const diagnosticResult = document.getElementById('diagnostic-result');
 
   const pushStatusLabel = document.getElementById('push-status-label');
@@ -128,6 +130,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (!isNewTargetDraft && intervalInput.value === '30' && data.intervalSeconds) {
           intervalInput.value = data.intervalSeconds;
+        }
+        if (!isNewTargetDraft && data.alertRepeatCount) {
+          alertRepeatCountInput.value = data.alertRepeatCount;
+        }
+        if (!isNewTargetDraft && data.alertRepeatIntervalSeconds) {
+          alertRepeatIntervalInput.value = data.alertRepeatIntervalSeconds;
         }
       }
     } catch (error) {
@@ -401,6 +409,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         cssSelector: cssSelectorVal,
         condition: conditionVal,
         intervalSeconds: intervalVal,
+        alertRepeatCount: parseInt(alertRepeatCountInput.value, 10) || 1,
+        alertRepeatIntervalSeconds: parseInt(alertRepeatIntervalInput.value, 10) || 30,
         subscription: currentSubscription
       })
     });
@@ -517,6 +527,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 상대 시간을 실시간으로 1초마다 업데이트
   setInterval(renderLastCheckTime, 1000);
+
+  // 알림 반복 횟수에 따라 간격 필드 활성화/비활성화
+  function updateRepeatIntervalState() {
+    const count = parseInt(alertRepeatCountInput.value, 10) || 1;
+    const intervalLabel = alertRepeatIntervalInput.closest('label');
+    if (count <= 1) {
+      alertRepeatIntervalInput.disabled = true;
+      if (intervalLabel) intervalLabel.style.opacity = '0.45';
+    } else {
+      alertRepeatIntervalInput.disabled = false;
+      if (intervalLabel) intervalLabel.style.opacity = '1';
+    }
+  }
+  alertRepeatCountInput.addEventListener('input', updateRepeatIntervalState);
+  updateRepeatIntervalState();
 
   updateStatus();
   setInterval(updateStatus, 4000);

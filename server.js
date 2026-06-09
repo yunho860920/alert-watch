@@ -95,13 +95,15 @@ app.get('/api/status', (req, res) => {
     intervalSeconds: config.intervalSeconds || status.intervalSeconds,
     keyword: config.keyword || '품절',
     condition: config.condition || 'disappear',
+    alertRepeatCount: config.alertRepeatCount || 1,
+    alertRepeatIntervalSeconds: config.alertRepeatIntervalSeconds || 30,
     registeredDevicesCount: config.subscriptions ? config.subscriptions.length : 0
   });
 });
 
 // 4. 감시 타겟 설정 변경 및 브라우저 구독 추가 API
 app.post('/api/settings', (req, res) => {
-  const { targetUrl, keyword, cssSelector, condition, intervalSeconds, subscription } = req.body;
+  const { targetUrl, keyword, cssSelector, condition, intervalSeconds, subscription, alertRepeatCount, alertRepeatIntervalSeconds } = req.body;
   const configPath = path.join(__dirname, 'config.json');
   
   let config = {
@@ -110,6 +112,8 @@ app.post('/api/settings', (req, res) => {
     cssSelector: cssSelector || '',
     condition: condition || 'disappear',
     intervalSeconds: parseInt(intervalSeconds, 10) || 30,
+    alertRepeatCount: parseInt(alertRepeatCount, 10) || 1,
+    alertRepeatIntervalSeconds: parseInt(alertRepeatIntervalSeconds, 10) || 30,
     subscriptions: []
   };
 

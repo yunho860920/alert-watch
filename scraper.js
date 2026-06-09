@@ -14,6 +14,7 @@ let lastCheckTime = null;
 let errorCount = 0;
 let availableOptions = []; // 현재 구매 가능한 구체적인 옵션명 목록
 let allOptions = []; // 전체 옵션명 및 구매 가능 여부 목록
+let repeatAlertTimer = null; // 반복 알림 타이머 핸들
 
 function isLikelyCssSelector(value) {
   const input = value ? value.trim() : '';
@@ -287,8 +288,34 @@ async function checkCancellation() {
       if (availableOptions.length > 0) {
         body = `감시하던 상품의 [${availableOptions.join(', ')}] 옵션 구입이 가능해졌습니다. 즉시 확인하세요!\n링크: ${url}`;
       }
-      
+
+      // 반복 알림 설정 읽기
+      const repeatCount = parseInt(config.alertRepeatCount, 10) || 1;
+      const repeatIntervalSeconds = parseInt(config.alertRepeatIntervalSeconds, 10) || 30;
+
+      // 기존 반복 알림 타이머가 있으면 취소 후 재시작
+      if (repeatAlertTimer) {
+        clearInterval(repeatAlertTimer);
+        repeatAlertTimer = null;
+      }
+
+      // 1회차 즉시 발송
       await sendWebPushNotification(title, body, url);
+      console.log(`[반복 알림] 1/${repeatCount}회 발송 완료.`);
+
+      if (repeatCount > 1) {
+        let sentCount = 1;
+        repeatAlertTimer = setInterval(async () => {
+          sentCount++;
+          await sendWebPushNotification(title, body, url);
+          console.log(`[반복 알림] ${sentCount}/${repeatCount}회 발송 완료.`);
+          if (sentCount >= repeatCount) {
+            clearInterval(repeatAlertTimer);
+            repeatAlertTimer = null;
+            console.log('[반복 알림] 설정된 횟수만큼 발송 완료. 반복 알림을 종료합니다.');
+          }
+        }, repeatIntervalSeconds * 1000);
+      }
     }
 
     lastStatus = currentStatus;
@@ -327,6 +354,12 @@ function stopMonitoring() {
   if (monitorInterval) {
     clearInterval(monitorInterval);
     monitorInterval = null;
+  }
+  // 진행 중인 반복 알림 타이머도 함께 정지
+  if (repeatAlertTimer) {
+    clearInterval(repeatAlertTimer);
+    repeatAlertTimer = null;
+    console.log('[반복 알림] 감시 정지로 인해 반복 알림 타이머를 종료합니다.');
   }
   console.log('[감시 엔진] 모니터링이 안전하게 정지되었습니다.');
 }
