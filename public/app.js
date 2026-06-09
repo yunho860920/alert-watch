@@ -82,14 +82,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       const currentTargetUrl = normalizeUrl(settingsUrl.value);
       const receivedTargetUrl = normalizeUrl(data.targetUrl);
       const isNewTargetDraft = currentTargetUrl && receivedTargetUrl && currentTargetUrl !== receivedTargetUrl;
+      const hasUserSaved = sessionStorage.getItem('userHasSavedSettings') === 'true';
+      const shouldShowCurrentStatus = hasUserSaved || (currentTargetUrl && receivedTargetUrl && currentTargetUrl === receivedTargetUrl);
 
       if (receivedTargetUrl) {
         lastKnownTargetUrl = receivedTargetUrl;
       }
 
       setMonitoringState(data.isMonitoring);
-      updateStatusBadge(data.lastStatus, data.availableOptions);
-      renderOptionsList(data.allOptions);
+      updateStatusBadge(shouldShowCurrentStatus ? data.lastStatus : 'UNKNOWN', shouldShowCurrentStatus ? data.availableOptions : []);
+      renderOptionsList(shouldShowCurrentStatus ? data.allOptions : []);
 
       if (data.lastCheckTime) {
         if (lastRawCheckTime !== data.lastCheckTime) {
@@ -111,7 +113,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       registeredDevices.textContent = `${data.registeredDevicesCount || 0}대`;
 
       // 사용자가 직접 저장한 적이 있는 세션에서만 서버 설정값을 입력란에 자동 점유 (신규 접속 시 공란 유지)
-      const hasUserSaved = sessionStorage.getItem('userHasSavedSettings') === 'true';
       if (hasUserSaved) {
         if (!settingsUrl.value && data.targetUrl) {
           settingsUrl.value = data.targetUrl;
@@ -145,6 +146,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       toggleMonitorBtn.className = 'primary-action neutral';
       toggleMonitorBtn.innerHTML = '<i class="fa-solid fa-rotate"></i><span>다시 확인</span>';
       updateStatusBadge('UNKNOWN');
+      renderOptionsList([]);
     }
   }
 
