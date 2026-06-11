@@ -7,14 +7,27 @@ const cheerio = require('cheerio');
 const webpush = require('web-push');
 require('dotenv').config();
 
-let isMonitoring = false;
-let monitorInterval = null;
-let lastStatus = 'UNKNOWN'; // 'SOLD_OUT', 'AVAILABLE', 'UNKNOWN'
-let lastCheckTime = null;
-let errorCount = 0;
-let availableOptions = []; // 현재 구매 가능한 구체적인 옵션명 목록
-let allOptions = []; // 전체 옵션명 및 구매 가능 여부 목록
-let repeatAlertTimer = null; // 반복 알림 타이머 핸들
+// 사용자별 모니터링 상태 맵
+// activeMonitors: Map<clientId, { monitorInterval, lastStatus, lastCheckTime, errorCount, availableOptions, allOptions, repeatAlertTimer, isMonitoring }>
+const activeMonitors = new Map();
+
+function getOrCreateMonitorState(clientId) {
+  if (!clientId) return null;
+  if (!activeMonitors.has(clientId)) {
+    activeMonitors.set(clientId, {
+      monitorInterval: null,
+      lastStatus: 'UNKNOWN',
+      lastCheckTime: null,
+      errorCount: 0,
+      availableOptions: [],
+      allOptions: [],
+      repeatAlertTimer: null,
+      isMonitoring: false
+    });
+  }
+  return activeMonitors.get(clientId);
+}
+
 
 function isLikelyCssSelector(value) {
   const input = value ? value.trim() : '';
@@ -48,9 +61,9 @@ function isLikelyCssSelector(value) {
 }
 
 /**
- * config.json 설정 데이터를 동적으로 읽어옵니다.
+ * config.json 전체 설정 데이터를 읽어옵니다.
  */
-function readConfig() {
+function readAllConfigs() {
   const configPath = path.join(__dirname, 'config.json');
   if (fs.existsSync(configPath)) {
     try {
@@ -59,12 +72,25 @@ function readConfig() {
       console.error('[감시 모듈] config.json 파싱 실패.', e.message);
     }
   }
+  return {};
+}
+
+/**
+ * 특정 사용자의 설정 데이터를 가져옵니다.
+ */
+function readConfig(clientId) {
+  const configs = readAllConfigs();
+  if (clientId && configs[clientId]) {
+    return configs[clientId];
+  }
   return {
-    targetUrl: 'https://gamzabatt.imweb.me/all/?idx=81',
-    keyword: '품절된 상품입니다',
+    targetUrl: '',
+    keyword: '품절',
     cssSelector: '',
     condition: 'disappear',
     intervalSeconds: 30,
+    alertRepeatCount: 1,
+    alertRepeatIntervalSeconds: 30,
     subscriptions: []
   };
 }
@@ -72,14 +98,16 @@ function readConfig() {
 /**
  * 만료되었거나 에러가 발생한 웹 푸시 구독 토큰을 config.json 목록에서 삭제합니다.
  */
-function removeBadSubscription(endpoint) {
+function removeBadSubscription(clientId, endpoint) {
+  if (!clientId) return;
   const configPath = path.join(__dirname, 'config.json');
-  const config = readConfig();
-  if (config.subscriptions) {
+  const configs = readAllConfigs();
+  const config = configs[clientId];
+  if (config && config.subscriptions) {
     config.subscriptions = config.subscriptions.filter(sub => sub.endpoint !== endpoint);
     try {
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-      console.log(`[구독 청소] 만료된 구독 기기를 제외 처리했습니다. (남은 기기: ${config.subscriptions.length}대)`);
+      fs.writeFileSync(configPath, JSON.stringify(configs, null, 2), 'utf8');
+      console.log(`[구독 청소] [${clientId}] 만료된 구독 기기를 제외 처리했습니다. (남은 기기: ${config.subscriptions.length}대)`);
     } catch (e) {
       console.error('[구독 청소 실패] config.json 갱신 중 에러 발생.', e.message);
     }
@@ -89,12 +117,12 @@ function removeBadSubscription(endpoint) {
 /**
  * 웹 푸시 수신자 전체에게 실시간 취소표 푸시 알림을 발송합니다.
  */
-async function sendWebPushNotification(title, body, url) {
-  const config = readConfig();
+async function sendWebPushNotification(clientId, title, body, url) {
+  const config = readConfig(clientId);
   const subs = config.subscriptions || [];
 
   if (subs.length === 0) {
-    console.log('[푸시 건너뜀] 등록된 브라우저 기기(구독자)가 없어 알림을 전송하지 않습니다.');
+    console.log(`[푸시 건너뜀] [${clientId}] 등록된 브라우저 기기(구독자)가 없어 알림을 전송하지 않습니다.`);
     return;
   }
 
@@ -109,14 +137,14 @@ async function sendWebPushNotification(title, body, url) {
   webpush.setVapidDetails('mailto:alert-admin@example.com', publicKey, privateKey);
 
   const payload = JSON.stringify({ title, body, url });
-  console.log(`[푸시 전송] 총 ${subs.length}대의 브라우저 기기로 취소표 발생 알림을 발송합니다.`);
+  console.log(`[푸시 전송] [${clientId}] 총 ${subs.length}대의 브라우저 기기로 취소표 발생 알림을 발송합니다.`);
 
   const pushPromises = subs.map(sub => {
     return webpush.sendNotification(sub, payload)
       .catch(err => {
         if (err.statusCode === 410 || err.statusCode === 404) {
           console.warn(`[만료 기기 감지] 만료되거나 삭제된 엔드포인트를 발견했습니다. (Endpoint: ${sub.endpoint})`);
-          removeBadSubscription(sub.endpoint);
+          removeBadSubscription(clientId, sub.endpoint);
         } else {
           console.error('[푸시 개별 오류] 알림 전송에 실패했습니다.', err.message);
         }
@@ -129,35 +157,40 @@ async function sendWebPushNotification(title, body, url) {
 /**
  * 품절 해제 감지 이력을 파일에 기록합니다. (최근 50개 회전 보존)
  */
-function saveHistory(detectedOptions) {
+function saveHistory(clientId, detectedOptions) {
+  if (!clientId) return;
   const historyPath = path.join(__dirname, 'history.json');
-  let history = [];
+  let histories = {};
 
   if (fs.existsSync(historyPath)) {
     try {
-      history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+      histories = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
     } catch (e) {
       console.error('[이력 저장 실패] 기존 history.json 파싱 실패.', e.message);
     }
+  }
+
+  if (!histories[clientId]) {
+    histories[clientId] = [];
   }
 
   const newRecord = {
     id: Date.now(),
     timestamp: new Date().toISOString(),
     formattedTime: new Date().toLocaleString(),
-    targetUrl: readConfig().targetUrl,
+    targetUrl: readConfig(clientId).targetUrl,
     detectedOptions: detectedOptions || []
   };
 
-  history.unshift(newRecord);
+  histories[clientId].unshift(newRecord);
   
-  if (history.length > 50) {
-    history = history.slice(0, 50);
+  if (histories[clientId].length > 50) {
+    histories[clientId] = histories[clientId].slice(0, 50);
   }
 
   try {
-    fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf8');
-    console.log(`[이력 저장 완료] 감지 시각: ${newRecord.formattedTime}`);
+    fs.writeFileSync(historyPath, JSON.stringify(histories, null, 2), 'utf8');
+    console.log(`[이력 저장 완료] [${clientId}] 감지 시각: ${newRecord.formattedTime}`);
   } catch (e) {
     console.error('[이력 저장 실패] history.json 쓰기 실패.', e.message);
   }
@@ -166,14 +199,20 @@ function saveHistory(detectedOptions) {
 /**
  * 대상 페이지의 HTML을 읽어 사용자가 정의한 키워드 조건 변화를 감시합니다.
  */
-async function checkCancellation() {
-  const config = readConfig();
+async function checkCancellation(clientId) {
+  if (!clientId) return;
+  const config = readConfig(clientId);
   const url = config.targetUrl;
   const keyword = config.keyword;
   const cssSelector = config.cssSelector;
   const condition = config.condition;
 
-  lastCheckTime = new Date();
+  if (!url) {
+    return;
+  }
+
+  const state = getOrCreateMonitorState(clientId);
+  state.lastCheckTime = new Date();
   const activeAvailableOptions = []; // 현재 사이클에서 추출한 구매 가능 옵션
   const activeAllOptions = []; // 현재 사이클에서 추출한 전체 옵션 상태 목록
 
@@ -291,7 +330,7 @@ async function checkCancellation() {
 
       if (hasOptions) {
         currentStatus = hasAvailableOption ? 'AVAILABLE' : 'SOLD_OUT';
-        console.log(`[지능형 감지] 옵션 드롭다운 분석 완료. 조건 충족 목록: [${activeAvailableOptions.join(', ')}]`);
+        console.log(`[지능형 감지] [${clientId}] 옵션 드롭다운 분석 완료. 조건 충족 목록: [${activeAvailableOptions.join(', ')}]`);
       } else {
         // 단일 상품 페이지의 경우
         const hasKeyword = html.includes(keyword);
@@ -309,24 +348,24 @@ async function checkCancellation() {
       }
     }
 
-    availableOptions = activeAvailableOptions; // 전역 데이터 업데이트
-    allOptions = activeAllOptions; // 전역 데이터 업데이트
+    state.availableOptions = activeAvailableOptions; // 데이터 업데이트
+    state.allOptions = activeAllOptions; // 데이터 업데이트
 
-    console.log(`[감시 로그] ${lastCheckTime.toLocaleString()} - 상태: ${currentStatus} (타겟 사이트: ${url})`);
+    console.log(`[감시 로그] [${clientId}] ${state.lastCheckTime.toLocaleString()} - 상태: ${currentStatus} (타겟 사이트: ${url})`);
 
     // 품절 -> 구입 가능 상태 변화 트리거
-    if (currentStatus === 'AVAILABLE' && lastStatus === 'SOLD_OUT') {
-      console.log('[알림 트리거] 구입 가능 조건 충족! 웹 푸시 전송을 개시합니다.');
+    if (currentStatus === 'AVAILABLE' && state.lastStatus === 'SOLD_OUT') {
+      console.log(`[알림 트리거] [${clientId}] 구입 가능 조건 충족! 웹 푸시 전송을 개시합니다.`);
       
       // 품절 해제 감지 이력을 영구 보관용 파일에 저장
-      saveHistory(activeAvailableOptions);
+      saveHistory(clientId, activeAvailableOptions);
       
       const title = '🚨 상품 구입 가능 알림!';
       let body = `감시하던 웹페이지 상태가 변경되어 구입이 가능해졌습니다. 즉시 확인하세요!\n링크: ${url}`;
       
       // 구매 가능한 구체적인 옵션이 추출된 경우 푸시 알림 문구에 결합
-      if (availableOptions.length > 0) {
-        body = `감시하던 상품의 [${availableOptions.join(', ')}] 옵션 구입이 가능해졌습니다. 즉시 확인하세요!\n링크: ${url}`;
+      if (state.availableOptions.length > 0) {
+        body = `감시하던 상품의 [${state.availableOptions.join(', ')}] 옵션 구입이 가능해졌습니다. 즉시 확인하세요!\n링크: ${url}`;
       }
 
       // 반복 알림 설정 읽기
@@ -334,96 +373,123 @@ async function checkCancellation() {
       const repeatIntervalSeconds = parseInt(config.alertRepeatIntervalSeconds, 10) || 30;
 
       // 기존 반복 알림 타이머가 있으면 취소 후 재시작
-      if (repeatAlertTimer) {
-        clearInterval(repeatAlertTimer);
-        repeatAlertTimer = null;
+      if (state.repeatAlertTimer) {
+        clearInterval(state.repeatAlertTimer);
+        state.repeatAlertTimer = null;
       }
 
       // 1회차 즉시 발송
-      await sendWebPushNotification(title, body, url);
-      console.log(`[반복 알림] 1/${repeatCount}회 발송 완료.`);
+      await sendWebPushNotification(clientId, title, body, url);
+      console.log(`[반복 알림] [${clientId}] 1/${repeatCount}회 발송 완료.`);
 
       if (repeatCount > 1) {
         let sentCount = 1;
-        repeatAlertTimer = setInterval(async () => {
+        state.repeatAlertTimer = setInterval(async () => {
           sentCount++;
-          await sendWebPushNotification(title, body, url);
-          console.log(`[반복 알림] ${sentCount}/${repeatCount}회 발송 완료.`);
+          await sendWebPushNotification(clientId, title, body, url);
+          console.log(`[반복 알림] [${clientId}] ${sentCount}/${repeatCount}회 발송 완료.`);
           if (sentCount >= repeatCount) {
-            clearInterval(repeatAlertTimer);
-            repeatAlertTimer = null;
-            console.log('[반복 알림] 설정된 횟수만큼 발송 완료. 반복 알림을 종료합니다.');
+            clearInterval(state.repeatAlertTimer);
+            state.repeatAlertTimer = null;
+            console.log(`[반복 알림] [${clientId}] 설정된 횟수만큼 발송 완료. 반복 알림을 종료합니다.`);
           }
         }, repeatIntervalSeconds * 1000);
       }
     }
 
-    lastStatus = currentStatus;
+    state.lastStatus = currentStatus;
   } catch (error) {
-    errorCount++;
-    console.error(`[감시 에러] 대상 페이지 조회 실패. (에러 횟수: ${errorCount})`, error.message);
+    state.errorCount++;
+    console.error(`[감시 에러] [${clientId}] 대상 페이지 조회 실패. (에러 횟수: ${state.errorCount})`, error.message);
   }
 }
 
 /**
  * 모니터링을 시작합니다.
  */
-function startMonitoring() {
-  if (isMonitoring) {
+function startMonitoring(clientId) {
+  if (!clientId) return;
+  const state = getOrCreateMonitorState(clientId);
+  if (state.isMonitoring) {
     return;
   }
 
-  isMonitoring = true;
-  const config = readConfig();
+  state.isMonitoring = true;
+  const config = readConfig(clientId);
   const intervalSeconds = config.intervalSeconds || 30;
 
-  console.log(`[감시 엔진] 새로운 설정을 기반으로 모니터링 가동을 시작합니다. (주기: ${intervalSeconds}초)`);
-  checkCancellation();
-  monitorInterval = setInterval(checkCancellation, intervalSeconds * 1000);
+  console.log(`[감시 엔진] [${clientId}] 새로운 설정을 기반으로 모니터링 가동을 시작합니다. (주기: ${intervalSeconds}초)`);
+  checkCancellation(clientId);
+  
+  if (state.monitorInterval) {
+    clearInterval(state.monitorInterval);
+  }
+  state.monitorInterval = setInterval(() => checkCancellation(clientId), intervalSeconds * 1000);
 }
 
 /**
  * 모니터링을 정지합니다.
  */
-function stopMonitoring() {
-  if (!isMonitoring) {
+function stopMonitoring(clientId) {
+  if (!clientId) return;
+  const state = getOrCreateMonitorState(clientId);
+  if (!state.isMonitoring) {
     return;
   }
 
-  isMonitoring = false;
-  if (monitorInterval) {
-    clearInterval(monitorInterval);
-    monitorInterval = null;
+  state.isMonitoring = false;
+  if (state.monitorInterval) {
+    clearInterval(state.monitorInterval);
+    state.monitorInterval = null;
   }
   // 진행 중인 반복 알림 타이머도 함께 정지
-  if (repeatAlertTimer) {
-    clearInterval(repeatAlertTimer);
-    repeatAlertTimer = null;
-    console.log('[반복 알림] 감시 정지로 인해 반복 알림 타이머를 종료합니다.');
+  if (state.repeatAlertTimer) {
+    clearInterval(state.repeatAlertTimer);
+    state.repeatAlertTimer = null;
+    console.log(`[반복 알림] [${clientId}] 감시 정지로 인해 반복 알림 타이머를 종료합니다.`);
   }
-  console.log('[감시 엔진] 모니터링이 안전하게 정지되었습니다.');
+  console.log(`[감시 엔진] [${clientId}] 모니터링이 안전하게 정지되었습니다.`);
 }
 
 /**
  * 대시보드 표기용 상태 리턴 함수
  */
-function getStatusData() {
-  const config = readConfig();
+function getStatusData(clientId) {
+  if (!clientId) return {};
+  const config = readConfig(clientId);
+  const state = getOrCreateMonitorState(clientId);
   return {
-    isMonitoring,
-    lastStatus,
-    lastCheckTime: lastCheckTime ? lastCheckTime.toLocaleString() : null,
-    errorCount,
+    isMonitoring: state.isMonitoring,
+    lastStatus: state.lastStatus,
+    lastCheckTime: state.lastCheckTime ? state.lastCheckTime.toLocaleString() : null,
+    errorCount: state.errorCount,
     targetUrl: config.targetUrl,
     intervalSeconds: config.intervalSeconds,
-    availableOptions: availableOptions, // 상세 옵션명 배열 전달
-    allOptions: allOptions // 전체 옵션 상태 목록 전달
+    availableOptions: state.availableOptions, // 상세 옵션명 배열 전달
+    allOptions: state.allOptions // 전체 옵션 상태 목록 전달
   };
+}
+
+/**
+ * 서버 시작 시 기존 활성화된 모든 감시 프로세스를 복구합니다.
+ */
+function initAllMonitors() {
+  console.log('[감시 엔진] 기존 감시 프로세스 복구를 개시합니다.');
+  const configs = readAllConfigs();
+  Object.keys(configs).forEach(clientId => {
+    const config = configs[clientId];
+    if (config && config.isMonitoring) {
+      console.log(`[자동 복구] [${clientId}] 감시를 복구합니다.`);
+      startMonitoring(clientId);
+    }
+  });
 }
 
 module.exports = {
   startMonitoring,
   stopMonitoring,
   getStatusData,
-  checkCancellation
+  checkCancellation,
+  initAllMonitors,
+  readConfig
 };

@@ -46,8 +46,47 @@ function isLikelyCssSelector(value) {
   }
 }
 
+// 0. 레거시 config 및 history 마이그레이션 로직
+const configPath = path.join(__dirname, 'config.json');
+if (fs.existsSync(configPath)) {
+  try {
+    const rawData = fs.readFileSync(configPath, 'utf8');
+    const parsed = JSON.parse(rawData);
+    if (parsed && parsed.targetUrl) {
+      console.log('[설정 마이그레이션] 레거시 config.json 포맷을 다중 사용자 포맷으로 변환합니다.');
+      const newConfigs = {
+        "legacy_default_user": {
+          ...parsed,
+          isMonitoring: true
+        }
+      };
+      fs.writeFileSync(configPath, JSON.stringify(newConfigs, null, 2), 'utf8');
+    }
+  } catch (e) {
+    console.error('[설정 마이그레이션 실패]', e.message);
+  }
+}
+
+const historyPath = path.join(__dirname, 'history.json');
+if (fs.existsSync(historyPath)) {
+  try {
+    const rawData = fs.readFileSync(historyPath, 'utf8');
+    const parsed = JSON.parse(rawData);
+    if (Array.isArray(parsed)) {
+      console.log('[이력 마이그레이션] 레거시 history.json 포맷을 다중 사용자 포맷으로 변환합니다.');
+      const newHistories = {
+        "legacy_default_user": parsed
+      };
+      fs.writeFileSync(historyPath, JSON.stringify(newHistories, null, 2), 'utf8');
+    }
+  } catch (e) {
+    console.error('[이력 마이그레이션 실패]', e.message);
+  }
+}
+
 // 1. VAPID 암호화 키 생성 및 세팅 자동화 로직
 const envPath = path.join(__dirname, '.env');
+
 let vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
 let vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
 
@@ -80,18 +119,24 @@ app.get('/api/health', (req, res) => {
 
 // 3. 현재 상태 및 설정 통합 조회 API
 app.get('/api/status', (req, res) => {
+  const { clientId } = req.query;
+  if (!clientId) {
+    return res.status(400).json({ error: 'clientId가 누락되었습니다.' });
+  }
+
   const configPath = path.join(__dirname, 'config.json');
-  let config = {};
+  let configs = {};
   
   if (fs.existsSync(configPath)) {
     try {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      configs = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     } catch (e) {
       console.error('[설정 로딩 실패] config.json 파싱 에러.', e.message);
     }
   }
 
-  const status = scraper.getStatusData();
+  const config = configs[clientId] || {};
+  const status = scraper.getStatusData(clientId);
   
   res.json({
     ...status,
@@ -108,28 +153,34 @@ app.get('/api/status', (req, res) => {
 
 // 4. 감시 타겟 설정 변경 및 브라우저 구독 추가 API
 app.post('/api/settings', (req, res) => {
-  const { targetUrl, keyword, cssSelector, condition, intervalSeconds, subscription, alertRepeatCount, alertRepeatIntervalSeconds } = req.body;
+  const { clientId, targetUrl, keyword, cssSelector, condition, intervalSeconds, subscription, alertRepeatCount, alertRepeatIntervalSeconds } = req.body;
+  if (!clientId) {
+    return res.status(400).json({ error: 'clientId가 누락되었습니다.' });
+  }
+
   const configPath = path.join(__dirname, 'config.json');
-  
+  let configs = {};
+
+  if (fs.existsSync(configPath)) {
+    try {
+      configs = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (e) {
+      console.error('[설정 덮어쓰기] 기존 config.json 로드 실패.', e.message);
+    }
+  }
+
+  const existingConfig = configs[clientId] || {};
   let config = {
-    targetUrl: targetUrl || 'https://gamzabatt.imweb.me/all/?idx=81',
+    targetUrl: targetUrl || '',
     keyword: keyword || '품절',
     cssSelector: cssSelector || '',
     condition: condition || 'disappear',
     intervalSeconds: parseInt(intervalSeconds, 10) || 30,
     alertRepeatCount: parseInt(alertRepeatCount, 10) || 1,
     alertRepeatIntervalSeconds: parseInt(alertRepeatIntervalSeconds, 10) || 30,
-    subscriptions: []
+    subscriptions: existingConfig.subscriptions || [],
+    isMonitoring: true
   };
-
-  if (fs.existsSync(configPath)) {
-    try {
-      const existingConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      config.subscriptions = existingConfig.subscriptions || [];
-    } catch (e) {
-      console.error('[설정 덮어쓰기] 기존 config.json 로드 실패.', e.message);
-    }
-  }
 
   if (subscription && subscription.endpoint) {
     const isAlreadySubscribed = config.subscriptions.some(
@@ -137,32 +188,82 @@ app.post('/api/settings', (req, res) => {
     );
     if (!isAlreadySubscribed) {
       config.subscriptions.push(subscription);
-      console.log(`[구독 추가] 새 기기 등록 완료. (총 기기: ${config.subscriptions.length}대)`);
+      console.log(`[구독 추가] [${clientId}] 새 기기 등록 완료. (총 기기: ${config.subscriptions.length}대)`);
     }
   }
 
+  configs[clientId] = config;
+
   try {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+    fs.writeFileSync(configPath, JSON.stringify(configs, null, 2), 'utf8');
   } catch (e) {
     return res.status(500).json({ error: '설정 저장 중 에러가 발생했습니다.' });
   }
 
-  scraper.stopMonitoring();
-  scraper.startMonitoring();
+  scraper.stopMonitoring(clientId);
+  scraper.startMonitoring(clientId);
 
-  res.json({ message: '모니터링 설정 및 기기 구독이 성공적으로 완료되었습니다.', status: scraper.getStatusData() });
+  res.json({ message: '모니터링 설정 및 기기 구독이 성공적으로 완료되었습니다.', status: scraper.getStatusData(clientId) });
 });
 
 // 5. 모니터링 시작 API
 app.post('/api/start', (req, res) => {
-  scraper.startMonitoring();
-  res.json({ message: '모니터링이 시작되었습니다.', status: scraper.getStatusData() });
+  const { clientId } = req.query;
+  if (!clientId) {
+    return res.status(400).json({ error: 'clientId가 누락되었습니다.' });
+  }
+
+  const configPath = path.join(__dirname, 'config.json');
+  let configs = {};
+  if (fs.existsSync(configPath)) {
+    try {
+      configs = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (e) {
+      console.error('[시작 API] config.json 로딩 실패.', e.message);
+    }
+  }
+
+  if (configs[clientId]) {
+    configs[clientId].isMonitoring = true;
+    try {
+      fs.writeFileSync(configPath, JSON.stringify(configs, null, 2), 'utf8');
+    } catch (e) {
+      console.error('[시작 API] config.json 저장 실패.', e.message);
+    }
+  }
+
+  scraper.startMonitoring(clientId);
+  res.json({ message: '모니터링이 시작되었습니다.', status: scraper.getStatusData(clientId) });
 });
 
 // 6. 모니터링 정지 API
 app.post('/api/stop', (req, res) => {
-  scraper.stopMonitoring();
-  res.json({ message: '모니터링이 정지되었습니다.', status: scraper.getStatusData() });
+  const { clientId } = req.query;
+  if (!clientId) {
+    return res.status(400).json({ error: 'clientId가 누락되었습니다.' });
+  }
+
+  const configPath = path.join(__dirname, 'config.json');
+  let configs = {};
+  if (fs.existsSync(configPath)) {
+    try {
+      configs = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (e) {
+      console.error('[정지 API] config.json 로딩 실패.', e.message);
+    }
+  }
+
+  if (configs[clientId]) {
+    configs[clientId].isMonitoring = false;
+    try {
+      fs.writeFileSync(configPath, JSON.stringify(configs, null, 2), 'utf8');
+    } catch (e) {
+      console.error('[정지 API] config.json 저장 실패.', e.message);
+    }
+  }
+
+  scraper.stopMonitoring(clientId);
+  res.json({ message: '모니터링이 정지되었습니다.', status: scraper.getStatusData(clientId) });
 });
 
 // 7. 웹 푸시 테스트 API
@@ -189,25 +290,47 @@ app.post('/api/test-push', async (req, res) => {
 
 // 7.5. 품절 해제 감지 이력 조회 API
 app.get('/api/history', (req, res) => {
+  const { clientId } = req.query;
+  if (!clientId) {
+    return res.json([]);
+  }
+
   const historyPath = path.join(__dirname, 'history.json');
-  let history = [];
+  let histories = {};
   
   if (fs.existsSync(historyPath)) {
     try {
-      history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+      histories = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
     } catch (e) {
       console.error('[이력 로드 실패] history.json 파싱 실패.', e.message);
     }
   }
   
-  res.json(history);
+  const userHistory = histories[clientId] || [];
+  res.json(userHistory);
 });
 
 // 7.6. 품절 해제 감지 이력 비우기 API
 app.post('/api/history/clear', (req, res) => {
+  const { clientId } = req.query;
+  if (!clientId) {
+    return res.status(400).json({ error: 'clientId가 누락되었습니다.' });
+  }
+
   const historyPath = path.join(__dirname, 'history.json');
+  let histories = {};
+  if (fs.existsSync(historyPath)) {
+    try {
+      histories = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+    } catch (e) {
+      console.error('[이력 초기화] history.json 로딩 실패.', e.message);
+    }
+  }
+
+  histories[clientId] = [];
+
   try {
-    fs.writeFileSync(historyPath, JSON.stringify([], null, 2), 'utf8');
+    fs.writeFileSync(historyPath, JSON.stringify(histories, null, 2), 'utf8');
     res.json({ message: '감시 이력이 성공적으로 초기화되었습니다.' });
   } catch (e) {
     res.status(500).json({ error: '이력 초기화 중 에러가 발생했습니다.' });
@@ -402,5 +525,5 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[서버 구동] http://localhost:${PORT} 에서 관리 서버가 가동되었습니다.`);
-  scraper.startMonitoring();
+  scraper.initAllMonitors();
 });

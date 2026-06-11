@@ -1,239 +1,285 @@
-<!-- 재입고 알림 대시보드 화면을 구성하는 HTML 문서 -->
+<!-- 재입고 알림 콘솔 화면을 구성하는 HTML 문서 -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Alert Watch</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <title>Alert Watch - Console</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="index.css">
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="#status-section" aria-label="Alert Watch 홈">
-      <span class="brand-mark" aria-hidden="true">
-        <i class="fa-solid fa-satellite-dish"></i>
-      </span>
-      <span>
-        <strong>Alert Watch</strong>
-        <small>재입고 알리미</small>
-      </span>
-    </a>
 
-    <nav class="topnav" aria-label="주요 메뉴">
-      <a href="#status-section" class="active">
-        <i class="fa-solid fa-chart-line"></i>
-        현황
-      </a>
-      <a href="#settings-section">
-        <i class="fa-solid fa-sliders"></i>
-        설정
-      </a>
-    </nav>
-  </header>
+  <!-- Ambient glowing spots -->
+  <div class="ambient-container">
+    <div class="ambient-blob blob-mint"></div>
+    <div class="ambient-blob blob-indigo"></div>
+  </div>
 
-  <main class="shell">
-    <section class="hero" aria-labelledby="page-title">
-      <div>
-        <p class="eyebrow">
-          <i class="fa-solid fa-satellite-dish"></i>
-          상태 변화 감시 대시보드
-        </p>
-        <h1 id="page-title">품절된 상품의<br>재입고를 기다립니다.</h1>
-        <p class="hero-copy">지정한 상품 페이지의 품절 상태와 옵션을 실시간으로 확인하여, 살 수 있게 되면 즉시 알림을 보냅니다.</p>
-      </div>
-      <div class="hero-summary" aria-label="현재 감시 요약">
-        <span class="summary-label">현재 상품 상태</span>
-        <div id="hero-status-text">상태 확인 중</div>
-      </div>
-    </section>
-
-    <div class="dashboard-grid">
-      <section id="status-section" class="panel status-panel" aria-labelledby="status-title">
-        <div class="panel-head">
-          <div>
-            <p class="section-kicker">Monitor</p>
-            <h2 id="status-title">실시간 확인 현황</h2>
+  <div class="app-wrapper">
+    <main class="console-window">
+      
+      <!-- Window Header -->
+      <header class="app-header">
+        <div class="header-top">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true">
+              <i class="fa-solid fa-satellite-dish"></i>
+            </span>
+            <div class="brand-info">
+              <strong>Alert Watch</strong>
+              <small>재입고 알리미</small>
+            </div>
           </div>
-          <div class="live-pill">
+          <div class="monitor-pill">
             <span id="monitoring-pulse" class="pulse-dot"></span>
-            <span id="monitoring-text">확인하는 중</span>
+            <span id="monitoring-text">연결 상태 확인 중</span>
           </div>
         </div>
 
-        <div class="status-stage">
-          <span class="stage-label">현재 판매 상태</span>
-          <div id="ticket-status-badge" class="badge unknown">
-            <i class="fa-solid fa-spinner fa-spin"></i>
-            확인하는 중
-          </div>
-          <div id="options-list-container" class="options-list-container"></div>
-          <a id="direct-buy-btn" class="direct-buy-btn" href="#" target="_blank" style="display: none;">
-            <i class="fa-solid fa-cart-shopping"></i>
-            <span>🔗 즉시 구매하러 가기</span>
-          </a>
-        </div>
-
-        <dl class="metric-grid">
-          <div>
-            <dt>최근 확인 시간</dt>
-            <dd id="last-check-time">-</dd>
-          </div>
-          <div>
-            <dt>확인 주기</dt>
-            <dd id="check-interval">-</dd>
-          </div>
-          <div>
-            <dt>알림 수신 기기</dt>
-            <dd id="registered-devices">0대</dd>
-          </div>
-        </dl>
-
-        <button id="toggle-monitor-btn" class="primary-action neutral" type="button">
-          <i class="fa-solid fa-play"></i>
-          <span>감시 시작하기</span>
-        </button>
-      </section>
-
-      <aside class="panel notification-panel" aria-labelledby="push-title">
-        <div class="panel-head compact">
-          <div>
-            <p class="section-kicker">Alert</p>
-            <h2 id="push-title">브라우저 알림</h2>
-          </div>
-          <i class="fa-regular fa-bell panel-icon" aria-hidden="true"></i>
-        </div>
-
-        <div class="push-state">
-          <span>연동 상태</span>
-          <strong id="push-status-label">비활성화</strong>
-        </div>
-
-        <div class="button-row">
-          <button id="push-toggle-btn" class="secondary-action" type="button">
-            <i class="fa-regular fa-bell"></i>
-            <span>알림 켜기</span>
+        <!-- Tab Controls -->
+        <nav class="tab-navigation" aria-label="주요 메뉴">
+          <button class="tab-btn active" data-tab="status-pane" onclick="switchTab('status-pane')" type="button">
+            <i class="fa-solid fa-chart-line"></i>
+            <span>현황</span>
           </button>
-          <button id="test-push-btn" class="secondary-action" type="button" disabled>
-            <i class="fa-regular fa-paper-plane"></i>
-            <span>테스트</span>
+          <button class="tab-btn" data-tab="settings-pane" onclick="switchTab('settings-pane')" type="button">
+            <i class="fa-solid fa-sliders"></i>
+            <span>설정</span>
           </button>
-        </div>
-      </aside>
+          <button class="tab-btn" data-tab="history-pane" onclick="switchTab('history-pane')" type="button">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <span>이력 & 알림</span>
+          </button>
+        </nav>
+      </header>
 
-      <section id="history-section" class="panel history-panel" aria-labelledby="history-title">
-        <div class="panel-head compact">
-          <div>
-            <p class="section-kicker">History</p>
-            <h2 id="history-title">최근 품절 해제 감지 이력</h2>
+      <!-- Console Body -->
+      <div class="console-body">
+        
+        <!-- Tab 1: Monitor Status -->
+        <section class="tab-pane active" id="status-pane" aria-labelledby="status-tab-title">
+          <h2 id="status-tab-title" style="display:none;">실시간 감시 현황</h2>
+          <div class="status-widget">
+            <span class="widget-title">현재 판매 상태</span>
+            
+            <div class="status-badge-container">
+              <div id="ticket-status-badge" class="badge unknown">
+                <i class="fa-solid fa-spinner fa-spin"></i>
+                <span>확인하는 중</span>
+              </div>
+            </div>
+
+            <div id="hero-status-text" class="hero-status-message">페이지 상태를 확인하는 중입니다.</div>
+            <div id="options-list-container" class="options-wrap"></div>
+            
+            <div class="buy-button-container">
+              <a id="direct-buy-btn" class="direct-buy-link" href="#" target="_blank" style="display: none;">
+                <i class="fa-solid fa-cart-shopping"></i>
+                <span>즉시 구매하러 이동</span>
+              </a>
+            </div>
           </div>
-          <button id="clear-history-btn" class="text-action-btn" type="button" title="이력 비우기">
-            <i class="fa-solid fa-trash-can"></i>
-          </button>
-        </div>
 
-        <div id="history-list-container" class="history-list-container">
-          <div class="empty-history">
-            <i class="fa-solid fa-clock-rotate-left" style="font-size: 1.5rem; margin-bottom: 8px; color: var(--subtle);"></i>
-            <div>감지된 품절 해제 이력이 없습니다.</div>
+          <!-- Key Metrics -->
+          <div class="metrics-console-grid">
+            <div class="metric-cell">
+              <span>최근 확인 시간</span>
+              <strong id="last-check-time">-</strong>
+            </div>
+            <div class="metric-cell">
+              <span>확인 주기</span>
+              <strong id="check-interval">-</strong>
+            </div>
+            <div class="metric-cell">
+              <span>알림 기기 수</span>
+              <strong id="registered-devices">0대</strong>
+            </div>
           </div>
-        </div>
-      </section>
 
-      <section id="settings-section" class="panel settings-panel" aria-labelledby="settings-title">
-        <div class="panel-head">
-          <div>
-            <p class="section-kicker">Target</p>
-            <h2 id="settings-title">알림 받을 상품 정보</h2>
+          <!-- Start / Stop Control -->
+          <button id="toggle-monitor-btn" class="primary-action neutral" type="button">
+            <i class="fa-solid fa-play"></i>
+            <span>감시 시작하기</span>
+          </button>
+        </section>
+
+        <!-- Tab 2: Settings -->
+        <section class="tab-pane" id="settings-pane" aria-labelledby="settings-tab-title">
+          <h2 id="settings-tab-title" style="display:none;">알림 받을 상품 설정</h2>
+          <form class="form-section" onsubmit="return false;">
+            
+            <div class="input-field-group full-width">
+              <label for="settings-url">상품 페이지 주소 (URL)</label>
+              <input type="url" id="settings-url" placeholder="https://구매하고싶은상품주소.com" required>
+            </div>
+
+            <div class="form-row-2">
+              <div class="input-field-group">
+                <label for="settings-keyword">품절 표시 문구</label>
+                <input type="text" id="settings-keyword" placeholder="예: 품절, 매진, SOLD OUT" required>
+                <small>페이지 상에 표시된 정확한 문구를 적어주세요.</small>
+              </div>
+
+              <div class="input-field-group">
+                <label for="settings-css-selector">구매할 옵션명 (선택)</label>
+                <input type="text" id="settings-css-selector" placeholder="예: 블랙 M, 230">
+                <small>비워두면 상품 전체 상태 변화를 감시합니다.</small>
+              </div>
+            </div>
+
+            <fieldset class="condition-fieldset">
+              <legend>언제 알림을 발송할까요?</legend>
+              <label class="condition-label">
+                <input type="radio" name="settings-condition" id="condition-disappear" value="disappear" checked>
+                <span class="condition-label-text">
+                  <strong>품절 문구가 사라졌을 때 (재입고됨)</strong>
+                  <small>'품절' 상태를 안내하던 문구가 사라지면 즉시 알림을 발송합니다.</small>
+                </span>
+              </label>
+              <label class="condition-label">
+                <input type="radio" name="settings-condition" id="condition-appear" value="appear">
+                <span class="condition-label-text">
+                  <strong>특정 문구가 나타났을 때 (판매 시작)</strong>
+                  <small>'구매하기' 혹은 '신청하기' 문구가 새로 활성화되면 알림을 발송합니다.</small>
+                </span>
+              </label>
+            </fieldset>
+
+            <div class="form-row-2">
+              <div class="input-field-group">
+                <label for="settings-interval">재입고 확인 주기</label>
+                <input type="number" id="settings-interval" min="1" max="3600" value="30">
+                <small>초 단위 (최소 1초 이상)</small>
+              </div>
+              
+              <div class="input-field-group">
+                <label for="settings-alert-repeat-count">알림 반복 횟수</label>
+                <input type="number" id="settings-alert-repeat-count" min="1" max="20" value="1">
+                <small>감지 시 전송 횟수 (1~20회)</small>
+              </div>
+            </div>
+
+            <div class="input-field-group">
+              <label for="settings-alert-repeat-interval">반복 알림 간격</label>
+              <input type="number" id="settings-alert-repeat-interval" min="5" max="3600" value="30">
+              <small>반복 발송 사이의 간격 초 단위 (최소 5초)</small>
+            </div>
+
+            <div class="diagnostic-box-container">
+              <div id="diagnostic-result" class="diagnostic-text-display hide" role="status"></div>
+            </div>
+
+            <div class="form-row-2" style="margin-top: 6px;">
+              <button id="check-feasibility-btn" class="secondary-action" type="button">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <span>작동 테스트</span>
+              </button>
+              <button id="save-settings-btn" class="primary-action" type="button">
+                <i class="fa-solid fa-floppy-disk"></i>
+                <span>설정 저장 및 시작</span>
+              </button>
+            </div>
+          </form>
+
+          <!-- Collapsible Guide box -->
+          <details class="guide-accordion">
+            <summary class="guide-summary">
+              <i class="fa-solid fa-circle-info"></i>
+              <span>도움말 및 백그라운드 절전 방지 팁</span>
+            </summary>
+            <div class="guide-details">
+              <ul>
+                <li><strong>백그라운드 지속 감시:</strong> 모니터링 엔진은 브라우저를 닫아도 백엔드 서버에서 24시간 작동하며 상태 변화 시 웹 푸시로 알려드립니다.</li>
+                <li><strong>수신 기기 등록:</strong> 우측 <strong>'이력 & 알림'</strong> 메뉴에서 <strong>[알림 켜기]</strong>를 눌러 수신 기기로 등록해 주셔야 실시간 알림을 받을 수 있습니다.</li>
+                <li><strong>Render 서버 절전 문제:</strong> 무료 Render 호스팅 사용 시 15분 접속이 없으면 서버가 절전 상태로 돌입합니다. 24시간 감시를 이어가려면 <strong>UptimeRobot</strong> 서비스에 가입하신 후, 이 서버의 헬스체크 주소(<code>/api/health</code>)를 5분 주기로 찌르도록 등록해 두세요.</li>
+              </ul>
+            </div>
+          </details>
+        </section>
+
+        <!-- Tab 3: History & Alert -->
+        <section class="tab-pane" id="history-pane" aria-labelledby="history-tab-title">
+          <h2 id="history-tab-title" style="display:none;">이력 및 알림 연동</h2>
+          <div class="history-alert-layout">
+            
+            <!-- Push Register widget -->
+            <div class="alert-control-box">
+              <div class="alert-box-header">
+                <span>브라우저 웹 푸시 알림</span>
+                <span id="push-status-label" class="push-label-badge">비활성화</span>
+              </div>
+              <div class="button-split-layout">
+                <button id="push-toggle-btn" class="secondary-action" type="button">
+                  <i class="fa-regular fa-bell"></i>
+                  <span>알림 켜기</span>
+                </button>
+                <button id="test-push-btn" class="secondary-action" type="button" disabled>
+                  <i class="fa-regular fa-paper-plane"></i>
+                  <span>테스트</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Detection History List -->
+            <div class="history-list-box">
+              <div class="history-box-titlebar">
+                <h3>
+                  <i class="fa-solid fa-history" style="color: var(--mint);"></i>
+                  <span>최근 감지 이력 (최대 50개)</span>
+                </h3>
+                <button id="clear-history-btn" class="btn-trash" type="button" title="이력 비우기">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+
+              <div id="history-list-container" class="history-log-wrapper">
+                <div class="history-empty-placeholder">
+                  <i class="fa-solid fa-clock-rotate-left" style="font-size: 1.4rem; color: var(--text-muted);"></i>
+                  <div>기록된 감지 이력이 없습니다.</div>
+                </div>
+              </div>
+            </div>
+
           </div>
-          <i class="fa-solid fa-sliders panel-icon" aria-hidden="true"></i>
-        </div>
+        </section>
 
-        <div class="form-grid">
-          <label class="field span-2" for="settings-url">
-            <span>상품 페이지 주소 (URL)</span>
-            <input type="url" id="settings-url" placeholder="https://구매하고싶은상품주소.com" required>
-          </label>
+      </div>
+    </main>
 
-          <label class="field" for="settings-keyword">
-            <span>품절 표시 문구</span>
-            <input type="text" id="settings-keyword" placeholder="예: 품절, SOLD OUT, 매진" required>
-            <small>상품 페이지에 적혀 있는 품절 안내 문구를 그대로 적어주세요.</small>
-          </label>
+    <footer class="console-footer">
+      <span>브라우저 수신 허용 기기를 대상으로 백그라운드로 알림을 전달합니다.</span>
+    </footer>
+  </div>
 
-          <label class="field" for="settings-css-selector">
-            <span>구매할 옵션명 (선택)</span>
-            <input type="text" id="settings-css-selector" placeholder="예: 블랙 M, 235 (비워두면 상품 전체 감시)">
-            <small>특정 사이즈나 색상만 감시하고 싶을 때 그 옵션명을 적어주세요.</small>
-          </label>
+  <script>
+    // Tab switching controller
+    function switchTab(tabId) {
+      // Deactivate all tab contents
+      const tabPanes = document.querySelectorAll('.tab-pane');
+      tabPanes.forEach(pane => {
+        pane.classList.remove('active');
+      });
 
-          <fieldset class="condition-box span-2">
-            <legend>언제 알림을 보낼까요?</legend>
-            <label>
-              <input type="radio" name="settings-condition" id="condition-disappear" value="disappear" checked>
-              <span>
-                <strong>품절 문구가 사라졌을 때 (재입고됨)</strong>
-                <small>예: '품절' 문구가 없어지면 살 수 있는 상태로 판단하고 알림을 보냅니다.</small>
-              </span>
-            </label>
-            <label>
-              <input type="radio" name="settings-condition" id="condition-appear" value="appear">
-              <span>
-                <strong>특정 문구가 새로 나타났을 때 (판매 시작)</strong>
-                <small>예: '구매하기'나 '신청하기' 문구가 새로 나타나면 알림을 보냅니다.</small>
-              </span>
-            </label>
-          </fieldset>
-          <label class="field" for="settings-interval">
-            <span>재입고 확인 간격</span>
-            <input type="number" id="settings-interval" min="1" max="3600" value="30">
-            <small>초 단위로 입력합니다. (최소 1초 이상)</small>
-          </label>
-          <label class="field" for="settings-alert-repeat-count">
-            <span>알림 반복 횟수</span>
-            <input type="number" id="settings-alert-repeat-count" min="1" max="20" value="1">
-            <small>재입고 감지 시 알림을 몇 번 보낼지 설정합니다. (1~20회)</small>
-          </label>
+      // Deactivate all tab buttons
+      const tabButtons = document.querySelectorAll('.tab-btn');
+      tabButtons.forEach(btn => {
+        btn.classList.remove('active');
+      });
 
-          <label class="field" for="settings-alert-repeat-interval">
-            <span>알림 반복 간격</span>
-            <input type="number" id="settings-alert-repeat-interval" min="5" max="3600" value="30">
-            <small>반복 알림 사이 간격을 초 단위로 입력합니다. (최소 5초)</small>
-          </label>
-        </div>
+      // Activate selected tab pane
+      const targetPane = document.getElementById(tabId);
+      if (targetPane) {
+        targetPane.classList.add('active');
+      }
 
-        <div id="diagnostic-result" class="diagnostic-result hide" role="status"></div>
-
-        <div class="settings-actions">
-          <button id="check-feasibility-btn" class="secondary-action large" type="button">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <span>정상 작동하는지 테스트해보기</span>
-          </button>
-          <button id="save-settings-btn" class="primary-action" type="button">
-            <i class="fa-solid fa-floppy-disk"></i>
-            <span>알림 감시 설정 저장 및 시작</span>
-          </button>
-        </div>
-
-        <div class="guide-box">
-          <h3><i class="fa-solid fa-circle-info"></i> 백그라운드 감시 안내 및 절전 방지 팁</h3>
-          <ul>
-            <li><strong>화면을 닫아도 감시 유지:</strong> 감시 엔진은 관리 서버(백엔드)에서 24시간 작동합니다. 스마트폰 화면이나 브라우저 창을 완전히 닫아도 백그라운드에서 감시가 수행되며, 구매 가능 상태가 되면 알림을 전송합니다.</li>
-            <li><strong>실시간 푸시 알림 수신:</strong> 알림을 받으시려면 반드시 우측 <strong>'브라우저 알림'</strong> 패널에서 <strong>[알림 켜기]</strong>를 눌러 기기를 등록하고 기기 자체의 알림 권한을 승인해 주셔야 합니다.</li>
-            <li><strong>무료 호스팅(Render 등) 절전 해결:</strong> 무료 클라우드 플랫폼을 사용할 경우 약 15분 동안 외부 접속이 없으면 서버가 자동으로 대기 상태(Sleep)로 전환되어 감시가 멈춥니다. 24시간 연속 감시를 하려면 <strong>UptimeRobot</strong> 같은 무료 모니터링 사이트에 가입하여 이 서버의 헬스체크 API 주소(<code>/api/health</code>)를 5분 주기로 찌르도록 등록해 주세요.</li>
-          </ul>
-        </div>
-      </section>
-    </div>
-  </main>
-
-  <footer class="footer">
-    브라우저 알림은 기기 등록 후 백그라운드로 전달됩니다.
-  </footer>
-
+      // Activate clicked tab button
+      const clickedBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+      if (clickedBtn) {
+        clickedBtn.classList.add('active');
+      }
+    }
+  </script>
   <script src="app.js"></script>
 </body>
 </html>

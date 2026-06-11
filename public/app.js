@@ -1,6 +1,14 @@
 // 백엔드 API와 통신해 감시 상태, 설정 저장, 브라우저 알림을 제어하는 스크립트
 document.addEventListener('DOMContentLoaded', async () => {
+  // 로컬 고유 클라이언트 식별자 관리
+  let clientId = localStorage.getItem('alertWatchClientId');
+  if (!clientId) {
+    clientId = 'client_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now();
+    localStorage.setItem('alertWatchClientId', clientId);
+  }
+
   const monitoringPulse = document.getElementById('monitoring-pulse');
+
   const monitoringText = document.getElementById('monitoring-text');
   const ticketStatusBadge = document.getElementById('ticket-status-badge');
   const heroStatusText = document.getElementById('hero-status-text');
@@ -157,7 +165,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function updateStatus() {
     try {
-      const response = await fetch('/api/status');
+      const response = await fetch(`/api/status?clientId=${clientId}`);
       if (!response.ok) {
         throw new Error('상태 정보를 불러오지 못했습니다.');
       }
@@ -494,6 +502,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          clientId: clientId,
           targetUrl: targetUrlVal,
           keyword: keywordVal,
           cssSelector: cssSelectorVal,
@@ -544,6 +553,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
+        clientId: clientId,
         targetUrl: targetUrlVal,
         keyword: keywordVal,
         cssSelector: cssSelectorVal,
@@ -597,7 +607,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const endpoint = isRunning ? '/api/stop' : '/api/start';
 
     try {
-      const response = await fetch(endpoint, { method: 'POST' });
+      const response = await fetch(`${endpoint}?clientId=${clientId}`, { method: 'POST' });
       if (!response.ok) {
         throw new Error('상태 제어 요청에 실패했습니다.');
       }
@@ -625,7 +635,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ subscription: currentSubscription })
+        body: JSON.stringify({ 
+          clientId: clientId,
+          subscription: currentSubscription 
+        })
       });
       const data = await response.json();
 
@@ -685,7 +698,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function updateHistory() {
     if (!historyListContainer) return;
     try {
-      const response = await fetch('/api/history');
+      const response = await fetch(`/api/history?clientId=${clientId}`);
       if (!response.ok) {
         throw new Error('이력 데이터를 불러올 수 없습니다.');
       }
@@ -759,7 +772,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     clearHistoryBtn.addEventListener('click', async () => {
       if (confirm('모든 감시 이력을 삭제하시겠습니까? (삭제된 이력은 복구되지 않습니다)')) {
         try {
-          const response = await fetch('/api/history/clear', { method: 'POST' });
+          const response = await fetch(`/api/history/clear?clientId=${clientId}`, { method: 'POST' });
           if (!response.ok) {
             throw new Error('이력 비우기에 실패했습니다.');
           }
