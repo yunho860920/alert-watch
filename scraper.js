@@ -127,6 +127,43 @@ async function sendWebPushNotification(title, body, url) {
 }
 
 /**
+ * 품절 해제 감지 이력을 파일에 기록합니다. (최근 50개 회전 보존)
+ */
+function saveHistory(detectedOptions) {
+  const historyPath = path.join(__dirname, 'history.json');
+  let history = [];
+
+  if (fs.existsSync(historyPath)) {
+    try {
+      history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+    } catch (e) {
+      console.error('[이력 저장 실패] 기존 history.json 파싱 실패.', e.message);
+    }
+  }
+
+  const newRecord = {
+    id: Date.now(),
+    timestamp: new Date().toISOString(),
+    formattedTime: new Date().toLocaleString(),
+    targetUrl: readConfig().targetUrl,
+    detectedOptions: detectedOptions || []
+  };
+
+  history.unshift(newRecord);
+  
+  if (history.length > 50) {
+    history = history.slice(0, 50);
+  }
+
+  try {
+    fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf8');
+    console.log(`[이력 저장 완료] 감지 시각: ${newRecord.formattedTime}`);
+  } catch (e) {
+    console.error('[이력 저장 실패] history.json 쓰기 실패.', e.message);
+  }
+}
+
+/**
  * 대상 페이지의 HTML을 읽어 사용자가 정의한 키워드 조건 변화를 감시합니다.
  */
 async function checkCancellation() {
@@ -280,6 +317,9 @@ async function checkCancellation() {
     // 품절 -> 구입 가능 상태 변화 트리거
     if (currentStatus === 'AVAILABLE' && lastStatus === 'SOLD_OUT') {
       console.log('[알림 트리거] 구입 가능 조건 충족! 웹 푸시 전송을 개시합니다.');
+      
+      // 품절 해제 감지 이력을 영구 보관용 파일에 저장
+      saveHistory(activeAvailableOptions);
       
       const title = '🚨 상품 구입 가능 알림!';
       let body = `감시하던 웹페이지 상태가 변경되어 구입이 가능해졌습니다. 즉시 확인하세요!\n링크: ${url}`;

@@ -73,6 +73,11 @@ app.get('/api/vapid-public-key', (req, res) => {
   res.json({ publicKey: vapidPublicKey });
 });
 
+// 2.5. 외부 모니터링 서비스용 헬스체크 API (UptimeRobot 등)
+app.get('/api/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 // 3. 현재 상태 및 설정 통합 조회 API
 app.get('/api/status', (req, res) => {
   const configPath = path.join(__dirname, 'config.json');
@@ -179,6 +184,33 @@ app.post('/api/test-push', async (req, res) => {
     res.json({ message: '테스트 푸시가 발송되었습니다.' });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// 7.5. 품절 해제 감지 이력 조회 API
+app.get('/api/history', (req, res) => {
+  const historyPath = path.join(__dirname, 'history.json');
+  let history = [];
+  
+  if (fs.existsSync(historyPath)) {
+    try {
+      history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+    } catch (e) {
+      console.error('[이력 로드 실패] history.json 파싱 실패.', e.message);
+    }
+  }
+  
+  res.json(history);
+});
+
+// 7.6. 품절 해제 감지 이력 비우기 API
+app.post('/api/history/clear', (req, res) => {
+  const historyPath = path.join(__dirname, 'history.json');
+  try {
+    fs.writeFileSync(historyPath, JSON.stringify([], null, 2), 'utf8');
+    res.json({ message: '감시 이력이 성공적으로 초기화되었습니다.' });
+  } catch (e) {
+    res.status(500).json({ error: '이력 초기화 중 에러가 발생했습니다.' });
   }
 });
 

@@ -8,6 +8,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const checkInterval = document.getElementById('check-interval');
   const registeredDevices = document.getElementById('registered-devices');
   const toggleMonitorBtn = document.getElementById('toggle-monitor-btn');
+  const clearHistoryBtn = document.getElementById('clear-history-btn');
+  const historyListContainer = document.getElementById('history-list-container');
 
   const settingsUrl = document.getElementById('settings-url');
   const settingsKeyword = document.getElementById('settings-keyword');
@@ -82,8 +84,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const currentTargetUrl = normalizeUrl(settingsUrl.value);
       const receivedTargetUrl = normalizeUrl(data.targetUrl);
       const isNewTargetDraft = currentTargetUrl && receivedTargetUrl && currentTargetUrl !== receivedTargetUrl;
-      const hasUserSaved = sessionStorage.getItem('userHasSavedSettings') === 'true';
-      const shouldShowCurrentStatus = hasUserSaved || (currentTargetUrl && receivedTargetUrl && currentTargetUrl === receivedTargetUrl);
+      const shouldShowCurrentStatus = !isNewTargetDraft;
 
       if (receivedTargetUrl) {
         lastKnownTargetUrl = receivedTargetUrl;
@@ -112,31 +113,38 @@ document.addEventListener('DOMContentLoaded', async () => {
       checkInterval.textContent = `${data.intervalSeconds || '-'}초`;
       registeredDevices.textContent = `${data.registeredDevicesCount || 0}대`;
 
-      // 사용자가 직접 저장한 적이 있는 세션에서만 서버 설정값을 입력란에 자동 점유 (신규 접속 시 공란 유지)
-      if (hasUserSaved) {
-        if (!settingsUrl.value && data.targetUrl) {
+      // 최신 품절 해제 감지 이력 동기화
+      await updateHistory();
+
+      // 서버에 저장된 감시 대상 정보가 있고, 사용자가 입력창에 다른 대상을 입력하는 중이 아닐 때 설정값을 자동 복원하여 표기
+      if (!isNewTargetDraft && data.targetUrl) {
+        if (settingsUrl.value !== data.targetUrl) {
           settingsUrl.value = data.targetUrl;
         }
-        if (!isNewTargetDraft && !settingsKeyword.value && data.keyword) {
-          settingsKeyword.value = data.keyword;
+        if (settingsKeyword.value !== data.keyword) {
+          settingsKeyword.value = data.keyword || '';
         }
-        if (!isNewTargetDraft && !settingsCssSelector.value && data.cssSelector) {
-          settingsCssSelector.value = data.cssSelector;
+        if (settingsCssSelector.value !== data.cssSelector) {
+          settingsCssSelector.value = data.cssSelector || '';
         }
-        if (!isNewTargetDraft && data.condition) {
+        if (data.condition) {
           const radioCondition = document.getElementById(`condition-${data.condition}`);
-          if (radioCondition) {
+          if (radioCondition && !radioCondition.checked) {
             radioCondition.checked = true;
           }
         }
-        if (!isNewTargetDraft && intervalInput.value === '30' && data.intervalSeconds) {
+        if (data.intervalSeconds && intervalInput.value !== String(data.intervalSeconds)) {
           intervalInput.value = data.intervalSeconds;
         }
-        if (!isNewTargetDraft && data.alertRepeatCount) {
+        if (data.alertRepeatCount && alertRepeatCountInput.value !== String(data.alertRepeatCount)) {
           alertRepeatCountInput.value = data.alertRepeatCount;
         }
-        if (!isNewTargetDraft && data.alertRepeatIntervalSeconds) {
+        if (data.alertRepeatIntervalSeconds && alertRepeatIntervalInput.value !== String(data.alertRepeatIntervalSeconds)) {
           alertRepeatIntervalInput.value = data.alertRepeatIntervalSeconds;
+        }
+        // 반복 알림 설정 간격 비활성화 상태 업데이트 호출
+        if (typeof updateRepeatIntervalState === 'function') {
+          updateRepeatIntervalState();
         }
       }
     } catch (error) {
@@ -422,9 +430,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       throw new Error(errData.error || '설정 저장에 실패했습니다.');
     }
 
-    // 사용자가 직접 저장했다는 세션 플래그 기록 (이 이후부터 서버 설정값이 입력란에 자동 반영됨)
-    sessionStorage.setItem('userHasSavedSettings', 'true');
-
     await updateStatus();
   }
 
@@ -544,6 +549,96 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   alertRepeatCountInput.addEventListener('input', updateRepeatIntervalState);
   updateRepeatIntervalState();
+
+  // 감지 이력 조회 및 렌더링 함수들
+  async function updateHistory() {
+    if (!historyListContainer) return;
+    try {
+      const response = await fetch('/api/history');
+      if (!response.ok) {
+        throw new Error('이력 데이터를 불러올 수 없습니다.');
+      }
+      const history = await response.json();
+      renderHistory(history);
+    } catch (error) {
+      console.error('[대시보드] 이력 업데이트 실패.', error);
+    }
+  }
+
+  function renderHistory(history) {
+    if (!historyListContainer) return;
+    
+    if (!history || history.length === 0) {
+      historyListContainer.innerHTML = `
+        <div class="empty-history">
+          <i class="fa-solid fa-clock-rotate-left" style="font-size: 1.5rem; margin-bottom: 8px; color: var(--subtle);"></i>
+          <div>감지된 품절 해제 이력이 없습니다.</div>
+        </div>
+      `;
+      return;
+    }
+
+    historyListContainer.innerHTML = '';
+    history.forEach(item => {
+      const historyItem = document.createElement('div');
+      historyItem.className = 'history-item';
+
+      const header = document.createElement('div');
+      header.className = 'history-item-header';
+      
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'history-time';
+      const itemDate = new Date(item.timestamp);
+      timeSpan.textContent = isNaN(itemDate.getTime()) ? item.formattedTime : itemDate.toLocaleString();
+
+      const badge = document.createElement('span');
+      badge.className = 'history-badge';
+      badge.innerHTML = `<i class="fa-solid fa-circle-check"></i><span>품절 해제</span>`;
+
+      header.appendChild(badge);
+      header.appendChild(timeSpan);
+
+      const body = document.createElement('div');
+      body.className = 'history-item-body';
+      
+      const shortUrl = item.targetUrl ? item.targetUrl.substring(0, 50) + (item.targetUrl.length > 50 ? '...' : '') : '링크 없음';
+      body.innerHTML = `<div><strong>대상 주소:</strong> <a href="${item.targetUrl}" target="_blank" style="color: var(--accent); text-decoration: none;">${shortUrl}</a></div>`;
+
+      historyItem.appendChild(header);
+      historyItem.appendChild(body);
+
+      if (item.detectedOptions && item.detectedOptions.length > 0) {
+        const optionsContainer = document.createElement('div');
+        optionsContainer.className = 'history-item-options';
+        
+        item.detectedOptions.forEach(opt => {
+          const optTag = document.createElement('span');
+          optTag.className = 'history-option-tag';
+          optTag.textContent = opt;
+          optionsContainer.appendChild(optTag);
+        });
+        historyItem.appendChild(optionsContainer);
+      }
+
+      historyListContainer.appendChild(historyItem);
+    });
+  }
+
+  if (clearHistoryBtn) {
+    clearHistoryBtn.addEventListener('click', async () => {
+      if (confirm('모든 감시 이력을 삭제하시겠습니까? (삭제된 이력은 복구되지 않습니다)')) {
+        try {
+          const response = await fetch('/api/history/clear', { method: 'POST' });
+          if (!response.ok) {
+            throw new Error('이력 비우기에 실패했습니다.');
+          }
+          await updateHistory();
+        } catch (error) {
+          alert(`이력 삭제 실패. ${error.message}`);
+        }
+      }
+    });
+  }
 
   updateStatus();
   setInterval(updateStatus, 4000);

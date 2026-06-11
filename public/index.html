@@ -120,6 +120,25 @@
         </div>
       </aside>
 
+      <section id="history-section" class="panel history-panel" aria-labelledby="history-title">
+        <div class="panel-head compact">
+          <div>
+            <p class="section-kicker">History</p>
+            <h2 id="history-title">최근 품절 해제 감지 이력</h2>
+          </div>
+          <button id="clear-history-btn" class="text-action-btn" type="button" title="이력 비우기">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+
+        <div id="history-list-container" class="history-list-container">
+          <div class="empty-history">
+            <i class="fa-solid fa-clock-rotate-left" style="font-size: 1.5rem; margin-bottom: 8px; color: var(--subtle);"></i>
+            <div>감지된 품절 해제 이력이 없습니다.</div>
+          </div>
+        </div>
+      </section>
+
       <section id="settings-section" class="panel settings-panel" aria-labelledby="settings-title">
         <div class="panel-head">
           <div>
@@ -195,6 +214,15 @@
             <i class="fa-solid fa-floppy-disk"></i>
             <span>알림 감시 설정 저장 및 시작</span>
           </button>
+        </div>
+
+        <div class="guide-box">
+          <h3><i class="fa-solid fa-circle-info"></i> 백그라운드 감시 안내 및 절전 방지 팁</h3>
+          <ul>
+            <li><strong>화면을 닫아도 감시 유지:</strong> 감시 엔진은 관리 서버(백엔드)에서 24시간 작동합니다. 스마트폰 화면이나 브라우저 창을 완전히 닫아도 백그라운드에서 감시가 수행되며, 구매 가능 상태가 되면 알림을 전송합니다.</li>
+            <li><strong>실시간 푸시 알림 수신:</strong> 알림을 받으시려면 반드시 우측 <strong>'브라우저 알림'</strong> 패널에서 <strong>[알림 켜기]</strong>를 눌러 기기를 등록하고 기기 자체의 알림 권한을 승인해 주셔야 합니다.</li>
+            <li><strong>무료 호스팅(Render 등) 절전 해결:</strong> 무료 클라우드 플랫폼을 사용할 경우 약 15분 동안 외부 접속이 없으면 서버가 자동으로 대기 상태(Sleep)로 전환되어 감시가 멈춥니다. 24시간 연속 감시를 하려면 <strong>UptimeRobot</strong> 같은 무료 모니터링 사이트에 가입하여 이 서버의 헬스체크 API 주소(<code>/api/health</code>)를 5분 주기로 찌르도록 등록해 주세요.</li>
+          </ul>
         </div>
       </section>
     </div>
