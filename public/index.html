@@ -71,6 +71,10 @@
             확인하는 중
           </div>
           <div id="options-list-container" class="options-list-container"></div>
+          <a id="direct-buy-btn" class="direct-buy-btn" href="#" target="_blank" style="display: none;">
+            <i class="fa-solid fa-cart-shopping"></i>
+            <span>🔗 즉시 구매하러 가기</span>
+          </a>
         </div>
 
         <dl class="metric-grid">
@@ -183,13 +187,11 @@
               </span>
             </label>
           </fieldset>
-
           <label class="field" for="settings-interval">
             <span>재입고 확인 간격</span>
-            <input type="number" id="settings-interval" min="5" max="3600" value="30">
-            <small>초 단위로 입력합니다. (최소 5초 이상)</small>
+            <input type="number" id="settings-interval" min="1" max="3600" value="30">
+            <small>초 단위로 입력합니다. (최소 1초 이상)</small>
           </label>
-
           <label class="field" for="settings-alert-repeat-count">
             <span>알림 반복 횟수</span>
             <input type="number" id="settings-alert-repeat-count" min="1" max="20" value="1">

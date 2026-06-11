@@ -33,6 +33,87 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastRawCheckTime = '';
   let localFormattedCheckTime = '';
   let localLastCheckTime = null;
+  let lastStatusAlerted = null;
+
+  function showInAppToast(targetUrl, availableOptions = []) {
+    let toast = document.getElementById('in-app-toast');
+    if (toast) {
+      return;
+    }
+
+    toast = document.createElement('div');
+    toast.id = 'in-app-toast';
+    toast.className = 'in-app-toast';
+
+    const header = document.createElement('div');
+    header.className = 'toast-header';
+
+    const icon = document.createElement('span');
+    icon.className = 'toast-icon';
+    icon.innerHTML = '<i class="fa-solid fa-bell"></i>';
+
+    const title = document.createElement('h4');
+    title.className = 'toast-title';
+    title.textContent = '🚨 상품 구매 가능 알림!';
+
+    const closeBtnX = document.createElement('button');
+    closeBtnX.className = 'toast-close-x';
+    closeBtnX.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    closeBtnX.onclick = () => dismissInAppToast();
+
+    header.appendChild(icon);
+    header.appendChild(title);
+    header.appendChild(closeBtnX);
+
+    const body = document.createElement('div');
+    body.className = 'toast-body';
+    
+    let optionText = '';
+    if (availableOptions && availableOptions.length > 0) {
+      optionText = `감시 대상 상품의 <strong>[${availableOptions.join(', ')}]</strong> 옵션 구매가 가능해졌습니다. 즉시 예매 페이지로 이동하여 구매하세요!`;
+    } else {
+      optionText = '감시 중인 상품 페이지가 구매 가능한 상태로 변경되었습니다. 즉시 확인해보세요!';
+    }
+    body.innerHTML = optionText;
+
+    const actions = document.createElement('div');
+    actions.className = 'toast-actions';
+
+    const goBtn = document.createElement('a');
+    goBtn.className = 'toast-btn primary';
+    goBtn.href = targetUrl || '#';
+    goBtn.target = '_blank';
+    goBtn.innerHTML = '<i class="fa-solid fa-cart-shopping"></i> 즉시 구매하러 이동';
+    goBtn.onclick = () => {
+      dismissInAppToast();
+    };
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'toast-btn secondary';
+    closeBtn.textContent = '닫기';
+    closeBtn.onclick = () => dismissInAppToast();
+
+    actions.appendChild(closeBtn);
+    actions.appendChild(goBtn);
+
+    toast.appendChild(header);
+    toast.appendChild(body);
+    toast.appendChild(actions);
+
+    document.body.appendChild(toast);
+  }
+
+  function dismissInAppToast() {
+    const toast = document.getElementById('in-app-toast');
+    if (toast) {
+      toast.classList.add('hide-toast');
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.parentNode.removeChild(toast);
+        }
+      }, 300);
+    }
+  }
 
   function parseServerDate(dateStr) {
     if (!dateStr) return null;
@@ -115,6 +196,30 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // 최신 품절 해제 감지 이력 동기화
       await updateHistory();
+
+      const currentStatus = shouldShowCurrentStatus ? data.lastStatus : 'UNKNOWN';
+
+      // 즉시 구매 이동 버튼 노출/숨김 및 URL 세팅
+      const directBuyBtn = document.getElementById('direct-buy-btn');
+      if (directBuyBtn) {
+        if (currentStatus === 'AVAILABLE' && data.targetUrl) {
+          directBuyBtn.href = data.targetUrl;
+          directBuyBtn.style.display = 'inline-flex';
+        } else {
+          directBuyBtn.style.display = 'none';
+        }
+      }
+
+      // 인앱 토스트 팝업 제어
+      if (currentStatus === 'AVAILABLE') {
+        if (lastStatusAlerted !== 'AVAILABLE') {
+          showInAppToast(data.targetUrl, data.availableOptions);
+          lastStatusAlerted = 'AVAILABLE';
+        }
+      } else {
+        lastStatusAlerted = currentStatus;
+        dismissInAppToast();
+      }
 
       // 서버에 저장된 감시 대상 정보가 있고, 사용자가 입력창에 다른 대상을 입력하는 중이 아닐 때 설정값을 자동 복원하여 표기
       if (!isNewTargetDraft && data.targetUrl) {
