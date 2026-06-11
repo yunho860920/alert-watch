@@ -34,6 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let localFormattedCheckTime = '';
   let localLastCheckTime = null;
   let lastStatusAlerted = null;
+  let hasUnsavedChanges = false;
 
   function showInAppToast(targetUrl, availableOptions = []) {
     let toast = document.getElementById('in-app-toast');
@@ -221,8 +222,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         dismissInAppToast();
       }
 
-      // 서버에 저장된 감시 대상 정보가 있고, 사용자가 입력창에 다른 대상을 입력하는 중이 아닐 때 설정값을 자동 복원하여 표기
-      if (!isNewTargetDraft && data.targetUrl) {
+      // 서버에 저장된 감시 대상 정보가 있고, 사용자가 입력 중인 설정을 덮어쓰지 않도록 수정
+      if (!hasUnsavedChanges && data.targetUrl) {
         if (settingsUrl.value !== data.targetUrl) {
           settingsUrl.value = data.targetUrl;
         }
@@ -425,6 +426,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // 사용자가 설정을 변경하기 시작하면 자동 갱신으로 덮어써지지 않도록 플래그 설정
+  const inputsToTrack = [
+    settingsUrl,
+    settingsKeyword,
+    settingsCssSelector,
+    intervalInput,
+    alertRepeatCountInput,
+    alertRepeatIntervalInput
+  ];
+  inputsToTrack.forEach(input => {
+    if (input) {
+      input.addEventListener('input', () => {
+        hasUnsavedChanges = true;
+      });
+    }
+  });
+
+  const conditionRadios = document.querySelectorAll('input[name="settings-condition"]');
+  conditionRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      hasUnsavedChanges = true;
+    });
+  });
+
   settingsUrl.addEventListener('input', () => {
     resetDetectionFieldsForNewTarget(false);
   });
@@ -535,6 +560,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       throw new Error(errData.error || '설정 저장에 실패했습니다.');
     }
 
+    hasUnsavedChanges = false;
     await updateStatus();
   }
 
