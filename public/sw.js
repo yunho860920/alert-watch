@@ -19,8 +19,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: '/favicon.ico', // 기본 아이콘 설정 폴백
-    badge: '/favicon.ico',
+    icon: '/logo.png', // 기본 아이콘 설정 폴백
+    badge: '/logo.png',
     vibrate: [200, 100, 200, 100, 200, 100, 400], // 모바일 진동 패턴 설정
     data: {
       url: data.url

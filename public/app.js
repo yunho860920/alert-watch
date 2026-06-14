@@ -14,7 +14,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const heroStatusText = document.getElementById('hero-status-text');
   const lastCheckTime = document.getElementById('last-check-time');
   const checkInterval = document.getElementById('check-interval');
+  const nextCheckTime = document.getElementById('next-check-time');
   const registeredDevices = document.getElementById('registered-devices');
+  const registeredDeviceList = document.getElementById('registered-device-list');
   const toggleMonitorBtn = document.getElementById('toggle-monitor-btn');
   const clearHistoryBtn = document.getElementById('clear-history-btn');
   const historyListContainer = document.getElementById('history-list-container');
@@ -32,6 +34,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const pushStatusLabel = document.getElementById('push-status-label');
   const pushToggleBtn = document.getElementById('push-toggle-btn');
   const testPushBtn = document.getElementById('test-push-btn');
+  const pushOnboardingBanner = document.getElementById('push-onboarding-banner');
+  const pushOnboardingTitle = document.getElementById('push-onboarding-title');
+  const pushOnboardingDetail = document.getElementById('push-onboarding-detail');
+  const pushOnboardingAction = document.getElementById('push-onboarding-action');
+  const postSaveAlertHint = document.getElementById('post-save-alert-hint');
 
   let isBtnLocked = false;
   let serviceWorkerReg = null;
@@ -41,8 +48,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastRawCheckTime = '';
   let localFormattedCheckTime = '';
   let localLastCheckTime = null;
+  let lastKnownIntervalSeconds = null;
+  let isMonitoringActive = false;
   let lastStatusAlerted = null;
   let hasUnsavedChanges = false;
+  let shouldShowPostSaveAlertHint = false;
 
   function showInAppToast(targetUrl, availableOptions = []) {
     let toast = document.getElementById('in-app-toast');
@@ -148,7 +158,257 @@ document.addEventListener('DOMContentLoaded', async () => {
     return parsed;
   }
 
-  if ('serviceWorker' in navigator && 'PushManager' in window) {
+  function getPushState() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      return 'unsupported';
+    }
+
+    if (Notification.permission === 'denied') {
+      return 'blocked';
+    }
+
+    if (currentSubscription) {
+      return 'ready';
+    }
+
+    return 'inactive';
+  }
+
+  function updatePushOnboardingUI() {
+    if (!pushOnboardingBanner || !pushOnboardingTitle || !pushOnboardingDetail || !pushOnboardingAction) {
+      return;
+    }
+
+    const state = getPushState();
+    pushOnboardingBanner.className = `push-onboarding-banner ${state}`;
+    pushOnboardingAction.disabled = false;
+
+    if (state === 'ready') {
+      pushOnboardingBanner.classList.add('hide');
+      return;
+    }
+
+    pushOnboardingBanner.classList.remove('hide');
+
+    if (state === 'blocked') {
+      pushOnboardingTitle.textContent = '브라우저에서 알림 권한이 차단되어 있습니다.';
+      pushOnboardingDetail.textContent = '주소창 왼쪽의 사이트 설정에서 알림 권한을 허용한 뒤 다시 시도해 주세요.';
+      pushOnboardingAction.innerHTML = '<i class="fa-solid fa-clock-rotate-left"></i><span>알림 탭 열기</span>';
+      return;
+    }
+
+    if (state === 'unsupported') {
+      pushOnboardingTitle.textContent = '이 브라우저는 푸시 알림을 지원하지 않습니다.';
+      pushOnboardingDetail.textContent = '다른 최신 브라우저에서 접속하면 실시간 알림을 받을 수 있습니다.';
+      pushOnboardingAction.innerHTML = '<i class="fa-solid fa-ban"></i><span>지원 안 됨</span>';
+      pushOnboardingAction.disabled = true;
+      return;
+    }
+
+    pushOnboardingTitle.textContent = '이 기기는 아직 알림을 받지 않습니다.';
+    pushOnboardingDetail.textContent = '감시가 시작되어도 이 기기에 알림이 오지 않을 수 있습니다.';
+    pushOnboardingAction.innerHTML = '<i class="fa-regular fa-bell"></i><span>알림 켜기</span>';
+  }
+
+  function renderPostSaveAlertHint() {
+    if (!postSaveAlertHint) {
+      return;
+    }
+
+    const shouldShow = shouldShowPostSaveAlertHint && getPushState() === 'inactive';
+    postSaveAlertHint.classList.toggle('hide', !shouldShow);
+  }
+
+  function renderNextCheckTime() {
+    if (!nextCheckTime) {
+      return;
+    }
+
+    if (!isMonitoringActive) {
+      nextCheckTime.textContent = '-';
+      return;
+    }
+
+    if (!localLastCheckTime || !lastKnownIntervalSeconds) {
+      nextCheckTime.textContent = '대기 중';
+      return;
+    }
+
+    const elapsedSec = Math.floor((Date.now() - localLastCheckTime) / 1000);
+    const remainingSec = Math.max(0, lastKnownIntervalSeconds - elapsedSec);
+    nextCheckTime.textContent = remainingSec === 0 ? '곧 확인' : `${remainingSec}초 후`;
+  }
+
+  function getClientDeviceInfo() {
+    const ua = navigator.userAgent || '';
+    let browser = '브라우저';
+
+    if (ua.includes('Edg/')) {
+      browser = 'Edge';
+    } else if (ua.includes('Chrome/') && !ua.includes('Edg/')) {
+      browser = 'Chrome';
+    } else if (ua.includes('Firefox/')) {
+      browser = 'Firefox';
+    } else if (ua.includes('Safari/') && !ua.includes('Chrome/')) {
+      browser = 'Safari';
+    }
+
+    let platform = '알 수 없는 기기';
+    if (/iPhone|iPad|iPod/.test(ua)) {
+      platform = 'iOS';
+    } else if (/Android/.test(ua)) {
+      platform = 'Android';
+    } else if (/Windows/.test(ua)) {
+      platform = 'Windows PC';
+    } else if (/Macintosh|Mac OS X/.test(ua)) {
+      platform = 'Mac';
+    } else if (/Linux/.test(ua)) {
+      platform = 'Linux';
+    }
+
+    const deviceType = /Mobile|Android|iPhone|iPad|iPod/.test(ua) ? 'mobile' : 'desktop';
+
+    return {
+      browser,
+      platform,
+      deviceType,
+      label: `${browser} · ${platform}`
+    };
+  }
+
+  function formatDeviceTime(value) {
+    if (!value) {
+      return '등록 시각 정보 없음';
+    }
+
+    const date = new Date(value);
+    if (isNaN(date.getTime())) {
+      return '등록 시각 정보 없음';
+    }
+
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  }
+
+  function renderRegisteredDevices(devices = []) {
+    if (!registeredDeviceList) {
+      return;
+    }
+
+    registeredDeviceList.innerHTML = '';
+
+    if (!devices.length) {
+      const empty = document.createElement('div');
+      empty.className = 'registered-device-empty';
+      empty.textContent = '아직 등록된 알림 대상이 없습니다. 알림 켜기를 누르면 현재 브라우저가 등록됩니다.';
+      registeredDeviceList.appendChild(empty);
+      return;
+    }
+
+    devices.forEach((device) => {
+      const item = document.createElement('div');
+      item.className = 'registered-device-item';
+
+      const icon = document.createElement('div');
+      icon.className = 'registered-device-icon';
+      icon.innerHTML = device.deviceType === 'mobile'
+        ? '<i class="fa-solid fa-mobile-screen-button"></i>'
+        : '<i class="fa-solid fa-desktop"></i>';
+
+      const copy = document.createElement('div');
+      copy.className = 'registered-device-copy';
+
+      const title = document.createElement('strong');
+      title.textContent = device.label || `등록된 브라우저 ${device.id || ''}`.trim();
+
+      const meta = document.createElement('span');
+      meta.textContent = `마지막 확인: ${formatDeviceTime(device.lastSeenAt || device.createdAt)}`;
+
+      copy.appendChild(title);
+      copy.appendChild(meta);
+
+      item.appendChild(icon);
+      item.appendChild(copy);
+
+      if (device.isCurrent) {
+        const current = document.createElement('span');
+        current.className = 'registered-device-current';
+        current.textContent = '현재 브라우저';
+        item.appendChild(current);
+      }
+
+      if (device.id) {
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'registered-device-remove';
+        removeBtn.type = 'button';
+        removeBtn.title = '알림 대상 제거';
+        removeBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i><span>제거</span>';
+        removeBtn.addEventListener('click', () => removeRegisteredDevice(device));
+        item.appendChild(removeBtn);
+      } else {
+        const pending = document.createElement('span');
+        pending.className = 'registered-device-pending';
+        pending.textContent = '재시작 후 제거 가능';
+        item.appendChild(pending);
+      }
+
+      registeredDeviceList.appendChild(item);
+    });
+  }
+
+  async function removeRegisteredDevice(device) {
+    if (!device || !device.id || isBtnLocked) {
+      return;
+    }
+
+    const label = device.label || '선택한 알림 대상';
+    const confirmed = confirm(`${label}을(를) 알림 발송 대상에서 제거할까요?`);
+    if (!confirmed) {
+      return;
+    }
+
+    isBtnLocked = true;
+
+    try {
+      const response = await fetch(`/api/subscriptions/${encodeURIComponent(device.id)}?clientId=${encodeURIComponent(clientId)}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || '알림 대상 제거에 실패했습니다.');
+      }
+
+      if (device.isCurrent && currentSubscription) {
+        try {
+          await currentSubscription.unsubscribe();
+        } catch (error) {
+          console.warn('[푸시] 현재 브라우저 구독 해제 중 경고.', error);
+        }
+        currentSubscription = null;
+        updatePushUI();
+      }
+
+      await updateStatus();
+    } catch (error) {
+      alert(`알림 대상 제거 실패. ${error.message}`);
+    } finally {
+      isBtnLocked = false;
+    }
+  }
+
+  function createRegisteredDeviceFallbacks(count) {
+    return Array.from({ length: count }, (_, index) => ({
+      id: null,
+      order: index + 1,
+      label: `등록된 브라우저 ${index + 1}`,
+      deviceType: 'desktop',
+      createdAt: null,
+      lastSeenAt: null,
+      isCurrent: false
+    }));
+  }
+
+  if ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window) {
     try {
       serviceWorkerReg = await navigator.serviceWorker.register('/sw.js');
       currentSubscription = await serviceWorkerReg.pushManager.getSubscription();
@@ -157,15 +417,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('[서비스워커] 등록 실패.', error);
       pushStatusLabel.textContent = '지원 안 됨';
       pushToggleBtn.disabled = true;
+      updatePushOnboardingUI();
     }
   } else {
     pushStatusLabel.textContent = '지원 안 됨';
     pushToggleBtn.disabled = true;
+    updatePushOnboardingUI();
   }
 
   async function updateStatus() {
     try {
-      const response = await fetch(`/api/status?clientId=${clientId}`);
+      const params = new URLSearchParams({ clientId });
+      if (currentSubscription && currentSubscription.endpoint) {
+        params.set('currentEndpoint', currentSubscription.endpoint);
+      }
+
+      const response = await fetch(`/api/status?${params.toString()}`);
       if (!response.ok) {
         throw new Error('상태 정보를 불러오지 못했습니다.');
       }
@@ -200,8 +467,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       } else {
         lastCheckTime.textContent = '기록 없음';
       }
+      lastKnownIntervalSeconds = data.intervalSeconds || null;
       checkInterval.textContent = `${data.intervalSeconds || '-'}초`;
-      registeredDevices.textContent = `${data.registeredDevicesCount || 0}대`;
+      renderNextCheckTime();
+      const registeredDeviceCount = data.registeredDevicesCount || 0;
+      const registeredDeviceItems = Array.isArray(data.registeredDevices)
+        ? data.registeredDevices
+        : createRegisteredDeviceFallbacks(registeredDeviceCount);
+
+      registeredDevices.textContent = `${registeredDeviceCount}개`;
+      renderRegisteredDevices(registeredDeviceItems);
 
       // 최신 품절 해제 감지 이력 동기화
       await updateHistory();
@@ -265,10 +540,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('[대시보드] 상태 업데이트 실패.', error);
       monitoringPulse.classList.remove('active');
       monitoringText.textContent = '연결 실패';
+      isMonitoringActive = false;
       toggleMonitorBtn.className = 'primary-action neutral';
       toggleMonitorBtn.innerHTML = '<i class="fa-solid fa-rotate"></i><span>다시 확인</span>';
+      if (nextCheckTime) {
+        nextCheckTime.textContent = '연결 실패';
+      }
       updateStatusBadge('UNKNOWN');
       renderOptionsList([]);
+      renderRegisteredDevices([]);
     }
   }
 
@@ -301,11 +581,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function setMonitoringState(isMonitoring) {
+    isMonitoringActive = Boolean(isMonitoring);
     if (isMonitoring) {
       monitoringPulse.classList.add('active');
       monitoringText.textContent = '감시 중';
       toggleMonitorBtn.className = 'primary-action stop running';
       toggleMonitorBtn.innerHTML = '<i class="fa-solid fa-square"></i><span>감시 일시중지</span>';
+      renderNextCheckTime();
       return;
     }
 
@@ -313,14 +595,258 @@ document.addEventListener('DOMContentLoaded', async () => {
     monitoringText.textContent = '일시중지';
     toggleMonitorBtn.className = 'primary-action neutral';
     toggleMonitorBtn.innerHTML = '<i class="fa-solid fa-play"></i><span>감시 시작</span>';
+    renderNextCheckTime();
   }
 
   function updateStatusBadge(status, availableOptions = []) {
     ticketStatusBadge.className = 'badge';
 
+    const SHIBA_UNKNOWN_SVG = `
+      <svg viewBox="0 0 100 100" width="72" height="72" xmlns="http://www.w3.org/2000/svg" style="display: block;">
+        <style>
+          @keyframes sniff {
+            0%, 100% { transform: translateY(0px) scale(1); }
+            50% { transform: translateY(-1px) scale(1.05); }
+          }
+          @keyframes headLook {
+            0%, 100% { transform: rotate(-5deg) translateX(-2px); }
+            50% { transform: rotate(5deg) translateX(2px); }
+          }
+          @keyframes magnifierSweep {
+            0%, 100% { transform: translate(-8px, 2px) rotate(-10deg); }
+            50% { transform: translate(8px, 2px) rotate(10deg); }
+          }
+          @keyframes eyesLook {
+            0%, 100% { transform: translateX(-2px); }
+            50% { transform: translateX(2px); }
+          }
+          .check-shiba-head {
+            animation: headLook 2s infinite ease-in-out;
+            transform-origin: 50px 75px;
+          }
+          .check-shiba-nose {
+            animation: sniff 0.3s infinite ease-in-out;
+            transform-origin: 50px 59.5px;
+          }
+          .check-shiba-eyes {
+            animation: eyesLook 2s infinite ease-in-out;
+          }
+          .check-magnifier {
+            animation: magnifierSweep 2s infinite ease-in-out;
+            transform-origin: 50px 75px;
+          }
+        </style>
+        <g class="check-shiba-head">
+          <!-- Ears -->
+          <path d="M 28 42 L 18 16 L 42 30 Z" fill="#E67E22" />
+          <path d="M 29 39 L 21 21 L 39 30 Z" fill="#FFD1DC" />
+          <path d="M 72 42 L 82 16 L 58 30 Z" fill="#E67E22" />
+          <path d="M 71 39 L 79 21 L 61 30 Z" fill="#FFD1DC" />
+
+          <!-- Head Base -->
+          <circle cx="50" cy="58" r="23" fill="#E67E22" />
+          <!-- Cheeks & Muzzle -->
+          <ellipse cx="37" cy="63" rx="12" ry="9" fill="#FFFFFF" />
+          <ellipse cx="63" cy="63" rx="12" ry="9" fill="#FFFFFF" />
+          <ellipse cx="50" cy="65" rx="9" ry="6" fill="#FFFFFF" />
+          
+          <!-- Eyebrows -->
+          <ellipse cx="39" cy="46" rx="4" ry="2.2" fill="#FFFFFF" />
+          <ellipse cx="61" cy="46" rx="4" ry="2.2" fill="#FFFFFF" />
+
+          <!-- Eyes -->
+          <g class="check-shiba-eyes">
+            <circle cx="40" cy="51.5" r="3.2" fill="#2C3E50" />
+            <circle cx="38.8" cy="50.3" r="1.1" fill="#FFFFFF" />
+            <circle cx="60" cy="51.5" r="3.2" fill="#2C3E50" />
+            <circle cx="58.8" cy="50.3" r="1.1" fill="#FFFFFF" />
+          </g>
+
+          <!-- Nose -->
+          <ellipse class="check-shiba-nose" cx="50" cy="59.5" rx="2.5" ry="1.6" fill="#2C3E50" />
+          <path d="M 47.5 62 Q 50 63.5 52.5 62" stroke="#2C3E50" stroke-width="1.2" fill="none" stroke-linecap="round" />
+
+          <!-- Detective Hat -->
+          <path d="M 33 34 C 33 19, 67 19, 67 34 Z" fill="#7D5C45" />
+          <path d="M 31 34 Q 50 31 69 34 L 69 36 Q 50 33 31 36 Z" fill="#E65C40" />
+          <path d="M 28 38 Q 50 35 72 38 C 70 33, 30 33, 28 38 Z" fill="#6A4B35" />
+          <circle cx="50" cy="14" r="2.8" fill="#E65C40" />
+        </g>
+
+        <!-- Magnifier -->
+        <g class="check-magnifier">
+          <line x1="77" y1="77" x2="87" y2="87" stroke="#6A4B35" stroke-width="3.5" stroke-linecap="round" />
+          <circle cx="70" cy="70" r="8.5" fill="#FFFFFF" stroke="#34495E" stroke-width="1.8" />
+          <circle cx="70" cy="70" r="6.7" fill="#00D2FC" opacity="0.35" />
+          <path d="M 67.5 68.5 A 5 5 0 0 1 72.5 67.5" fill="none" stroke="#FFFFFF" stroke-width="0.8" stroke-linecap="round" />
+          <circle cx="76" cy="75" r="4.5" fill="#FFFFFF" stroke="#E67E22" stroke-width="1.2" />
+        </g>
+      </svg>
+    `;
+
+    const SHIBA_SOLDOUT_SVG = `
+      <svg viewBox="0 0 100 100" width="72" height="72" xmlns="http://www.w3.org/2000/svg" style="display: block;">
+        <style>
+          @keyframes sleep {
+            0%, 100% { transform: translateY(0px) scaleY(1); }
+            50% { transform: translateY(1.5px) scaleY(0.97); }
+          }
+          @keyframes z1 {
+            0% { opacity: 0; transform: translate(62px, 42px) scale(0.6); }
+            30% { opacity: 1; transform: translate(68px, 32px) scale(0.9); }
+            100% { opacity: 0; transform: translate(74px, 18px) scale(1.2); }
+          }
+          @keyframes z2 {
+            0% { opacity: 0; transform: translate(70px, 38px) scale(0.6); }
+            30% { opacity: 1; transform: translate(75px, 28px) scale(0.9); }
+            100% { opacity: 0; transform: translate(80px, 14px) scale(1.2); }
+          }
+          .sleep-shiba {
+            animation: sleep 3s infinite ease-in-out;
+            transform-origin: 50px 80px;
+          }
+          .zzz-1 {
+            animation: z1 3s infinite linear;
+          }
+          .zzz-2 {
+            animation: z2 3s infinite linear 1.5s;
+          }
+        </style>
+        <g class="sleep-shiba">
+          <!-- Ears -->
+          <path d="M 28 42 L 18 16 L 42 30 Z" fill="#E67E22" />
+          <path d="M 29 39 L 21 21 L 39 30 Z" fill="#FFD1DC" />
+          <path d="M 72 42 L 82 16 L 58 30 Z" fill="#E67E22" />
+          <path d="M 71 39 L 79 21 L 61 30 Z" fill="#FFD1DC" />
+
+          <!-- Head Base -->
+          <circle cx="50" cy="58" r="23" fill="#E67E22" />
+          <!-- Cheeks & Muzzle -->
+          <ellipse cx="37" cy="63" rx="12" ry="9" fill="#FFFFFF" />
+          <ellipse cx="63" cy="63" rx="12" ry="9" fill="#FFFFFF" />
+          <ellipse cx="50" cy="65" rx="9" ry="6" fill="#FFFFFF" />
+          
+          <!-- Eyebrows -->
+          <ellipse cx="39" cy="46" rx="4" ry="2.2" fill="#FFFFFF" />
+          <ellipse cx="61" cy="46" rx="4" ry="2.2" fill="#FFFFFF" />
+
+          <!-- Eyes (Sleeping curves) -->
+          <path d="M 35 52 Q 40 56 43 52" stroke="#2C3E50" stroke-width="2.2" fill="none" stroke-linecap="round" />
+          <path d="M 57 52 Q 60 56 65 52" stroke="#2C3E50" stroke-width="2.2" fill="none" stroke-linecap="round" />
+
+          <!-- Blush -->
+          <circle cx="31" cy="57" r="2" fill="#FF8A9A" opacity="0.6" />
+          <circle cx="69" cy="57" r="2" fill="#FF8A9A" opacity="0.6" />
+
+          <!-- Nose & Mouth -->
+          <ellipse cx="50" cy="59.5" rx="2.5" ry="1.6" fill="#2C3E50" />
+          <path d="M 48 63.5 Q 50 61.5 52 63.5" stroke="#2C3E50" stroke-width="1.2" fill="none" stroke-linecap="round" />
+
+          <!-- Detective Hat -->
+          <path d="M 33 34 C 33 19, 67 19, 67 34 Z" fill="#7D5C45" opacity="0.85" />
+          <path d="M 31 34 Q 50 31 69 34 L 69 36 Q 50 33 31 36 Z" fill="#E65C40" opacity="0.85" />
+          <path d="M 28 38 Q 50 35 72 38 C 70 33, 30 33, 28 38 Z" fill="#6A4B35" opacity="0.85" />
+          <circle cx="50" cy="14" r="2.8" fill="#E65C40" opacity="0.85" />
+        </g>
+
+        <!-- Zzz Bubbles -->
+        <text class="zzz-1" font-family="'Outfit', sans-serif" font-weight="bold" font-size="10" fill="#E2E8F0">Z</text>
+        <text class="zzz-2" font-family="'Outfit', sans-serif" font-weight="bold" font-size="13" fill="#A0AEC0">z</text>
+      </svg>
+    `;
+
+    const SHIBA_AVAILABLE_SVG = `
+      <svg viewBox="0 0 100 100" width="72" height="72" xmlns="http://www.w3.org/2000/svg" style="display: block;">
+        <style>
+          @keyframes happyBounce {
+            0% { transform: translateY(0px); }
+            100% { transform: translateY(-4px); }
+          }
+          @keyframes earFlapL {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(-8deg); }
+          }
+          @keyframes earFlapR {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(8deg); }
+          }
+          @keyframes star1 {
+            0%, 100% { transform: scale(0.4) rotate(0deg); opacity: 0; }
+            50% { transform: scale(1) rotate(90deg); opacity: 1; }
+          }
+          .happy-shiba {
+            animation: happyBounce 0.3s infinite alternate ease-in-out;
+            transform-origin: 50px 80px;
+          }
+          .happy-ear-l {
+            animation: earFlapL 0.15s infinite alternate ease-in-out;
+            transform-origin: 30px 42px;
+          }
+          .happy-ear-r {
+            animation: earFlapR 0.15s infinite alternate ease-in-out;
+            transform-origin: 70px 42px;
+          }
+          .happy-star-1 {
+            animation: star1 1.2s infinite ease-in-out;
+            transform-origin: 20px 25px;
+          }
+          .happy-star-2 {
+            animation: star1 1.2s infinite ease-in-out 0.6s;
+            transform-origin: 80px 25px;
+          }
+        </style>
+
+        <!-- Stars -->
+        <path class="happy-star-1" d="M 20 17 L 22 22 L 27 20 L 23 24 L 25 29 L 20 25 L 15 29 L 17 24 L 13 20 L 18 22 Z" fill="#FFD700" />
+        <path class="happy-star-2" d="M 80 17 L 82 22 L 87 20 L 83 24 L 85 29 L 80 25 L 75 29 L 77 24 L 73 20 L 78 22 Z" fill="#FFD700" />
+
+        <g class="happy-shiba">
+          <!-- Ears -->
+          <g class="happy-ear-l">
+            <path d="M 28 42 L 18 16 L 42 30 Z" fill="#E67E22" />
+            <path d="M 29 39 L 21 21 L 39 30 Z" fill="#FFD1DC" />
+          </g>
+          <g class="happy-ear-r">
+            <path d="M 72 42 L 82 16 L 58 30 Z" fill="#E67E22" />
+            <path d="M 71 39 L 79 21 L 61 30 Z" fill="#FFD1DC" />
+          </g>
+
+          <!-- Head Base -->
+          <circle cx="50" cy="57" r="23" fill="#E67E22" />
+          <!-- Cheeks & Muzzle -->
+          <ellipse cx="37" cy="62" rx="12" ry="9" fill="#FFFFFF" />
+          <ellipse cx="63" cy="62" rx="12" ry="9" fill="#FFFFFF" />
+          <ellipse cx="50" cy="64" rx="9" ry="6" fill="#FFFFFF" />
+          
+          <!-- Eyebrows -->
+          <ellipse cx="39" cy="45" rx="4" ry="2.2" fill="#FFFFFF" />
+          <ellipse cx="61" cy="45" rx="4" ry="2.2" fill="#FFFFFF" />
+
+          <!-- Eyes (Happy arches) -->
+          <path d="M 35 52 Q 40 47 43 52" stroke="#2C3E50" stroke-width="2.5" fill="none" stroke-linecap="round" />
+          <path d="M 57 52 Q 60 47 65 52" stroke="#2C3E50" stroke-width="2.5" fill="none" stroke-linecap="round" />
+
+          <!-- Blush -->
+          <circle cx="30" cy="57" r="3" fill="#FF527B" opacity="0.8" />
+          <circle cx="70" cy="57" r="3" fill="#FF527B" opacity="0.8" />
+
+          <!-- Nose & Happy Open Mouth -->
+          <path d="M 45 62.5 Q 50 72 55 62.5 Z" fill="#E76F51" stroke="#2C3E50" stroke-width="1.5" />
+          <path d="M 47.5 62.5 C 48.5 63.5, 49.5 63.5, 50 62.5 C 50.5 63.5, 51.5 63.5, 52.5 62.5" stroke="#2C3E50" stroke-width="1.2" fill="none" stroke-linecap="round" />
+          <ellipse cx="50" cy="60" rx="2.5" ry="1.6" fill="#2C3E50" />
+
+          <!-- Detective Hat -->
+          <path d="M 33 34 C 33 19, 67 19, 67 34 Z" fill="#7D5C45" />
+          <path d="M 31 34 Q 50 31 69 34 L 69 36 Q 50 33 31 36 Z" fill="#E65C40" />
+          <path d="M 28 38 Q 50 35 72 38 C 70 33, 30 33, 28 38 Z" fill="#6A4B35" />
+          <circle cx="50" cy="14" r="2.8" fill="#E65C40" />
+        </g>
+      </svg>
+    `;
+
     if (status === 'SOLD_OUT') {
       ticketStatusBadge.classList.add('soldout');
-      ticketStatusBadge.innerHTML = '<i class="fa-solid fa-lock"></i><span>아직 품절</span>';
+      ticketStatusBadge.innerHTML = `${SHIBA_SOLDOUT_SVG}<span>아직 품절</span>`;
       heroStatusText.textContent = '아직 구매 가능한 신호가 없습니다.';
       return;
     }
@@ -328,13 +854,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (status === 'AVAILABLE') {
       ticketStatusBadge.classList.add('available');
       const optionText = availableOptions.length > 0 ? ` · ${availableOptions.join(', ')}` : '';
-      ticketStatusBadge.innerHTML = `<i class="fa-solid fa-circle-check"></i><span>구매 가능${optionText}</span>`;
+      ticketStatusBadge.innerHTML = `${SHIBA_AVAILABLE_SVG}<span>구매 가능${optionText}</span>`;
       heroStatusText.textContent = '구매 가능 상태가 감지됐습니다.';
       return;
     }
 
     ticketStatusBadge.classList.add('unknown');
-    ticketStatusBadge.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i><span>확인하는 중</span>';
+    ticketStatusBadge.innerHTML = `${SHIBA_UNKNOWN_SVG}<span>확인하는 중</span>`;
     heroStatusText.textContent = '페이지 상태를 확인하는 중입니다.';
   }
 
@@ -367,16 +893,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   function updatePushUI() {
     if (currentSubscription) {
       pushStatusLabel.textContent = '연동 완료';
-      pushStatusLabel.className = 'active';
+      pushStatusLabel.className = 'push-label-badge active';
       pushToggleBtn.innerHTML = '<i class="fa-regular fa-bell-slash"></i><span>알림 끄기</span>';
       testPushBtn.disabled = false;
+      updatePushOnboardingUI();
+      renderPostSaveAlertHint();
       return;
     }
 
     pushStatusLabel.textContent = '비활성화';
-    pushStatusLabel.className = '';
+    pushStatusLabel.className = 'push-label-badge';
     pushToggleBtn.innerHTML = '<i class="fa-regular fa-bell"></i><span>알림 켜기</span>';
     testPushBtn.disabled = true;
+    updatePushOnboardingUI();
+    renderPostSaveAlertHint();
   }
 
   function urlBase64ToUint8Array(base64String) {
@@ -434,6 +964,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  if (pushOnboardingAction) {
+    pushOnboardingAction.addEventListener('click', () => {
+      const state = getPushState();
+      if (state === 'inactive') {
+        pushToggleBtn.click();
+        return;
+      }
+
+      if (state === 'blocked') {
+        switchTab('history-pane');
+      }
+    });
+  }
+
   // 사용자가 설정을 변경하기 시작하면 자동 갱신으로 덮어써지지 않도록 플래그 설정
   const inputsToTrack = [
     settingsUrl,
@@ -461,6 +1005,54 @@ document.addEventListener('DOMContentLoaded', async () => {
   settingsUrl.addEventListener('input', () => {
     resetDetectionFieldsForNewTarget(false);
   });
+
+  function renderDiagnosticCard(data, conditionVal) {
+    const statusClass = !data.success ? 'error' : data.isKeywordFound ? 'success' : 'warning';
+    const statusLabel = !data.success ? '테스트 실패' : data.isKeywordFound ? '감지 조건 확인' : '확인 필요';
+    const iconClass = !data.success ? 'fa-circle-exclamation' : data.isKeywordFound ? 'fa-circle-check' : 'fa-triangle-exclamation';
+    const conditionLabel = conditionVal === 'appear' ? '문구가 나타나면 알림' : '문구가 사라지면 알림';
+    const accessibleLabel = data.isAccessible === false ? '접근 실패' : `접근 성공${data.statusCode ? ` (${data.statusCode})` : ''}`;
+    const keywordLabel = data.isKeywordFound ? '문구 발견됨' : '문구 미발견';
+    const nextAction = !data.success
+      ? 'URL 또는 사이트 접근 제한을 확인하세요.'
+      : data.isKeywordFound
+        ? '이 설정으로 저장 및 시작할 수 있습니다.'
+        : '문구, 조건, 옵션 필터를 다시 확인하세요.';
+
+    diagnosticResult.className = `diagnostic-card ${statusClass}`;
+    diagnosticResult.innerHTML = '';
+
+    const header = document.createElement('div');
+    header.className = 'diagnostic-card-header';
+    header.innerHTML = `<i class="fa-solid ${iconClass}"></i><span>${statusLabel}</span>`;
+
+    const body = document.createElement('div');
+    body.className = 'diagnostic-card-body';
+
+    [
+      ['URL 접근', accessibleLabel],
+      ['문구 상태', keywordLabel],
+      ['알림 조건', conditionLabel],
+      ['다음 행동', nextAction],
+      ['상세 결과', data.message || '진단 결과 메시지가 없습니다.']
+    ].forEach(([label, value]) => {
+      const row = document.createElement('div');
+      row.className = 'diagnostic-row';
+
+      const labelEl = document.createElement('span');
+      labelEl.textContent = label;
+
+      const valueEl = document.createElement('strong');
+      valueEl.textContent = value;
+
+      row.appendChild(labelEl);
+      row.appendChild(valueEl);
+      body.appendChild(row);
+    });
+
+    diagnosticResult.appendChild(header);
+    diagnosticResult.appendChild(body);
+  }
 
   checkFeasibilityBtn.addEventListener('click', async () => {
     if (resetDetectionFieldsForNewTarget(true)) {
@@ -515,16 +1107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       const data = await response.json();
-      diagnosticResult.classList.remove('hide');
-      diagnosticResult.textContent = data.message;
-
-      if (!data.success) {
-        diagnosticResult.className = 'diagnostic-result error';
-      } else if (data.isKeywordFound) {
-        diagnosticResult.className = 'diagnostic-result success';
-      } else {
-        diagnosticResult.className = 'diagnostic-result warning';
-      }
+      renderDiagnosticCard(data, conditionVal);
     } catch (error) {
       diagnosticResult.classList.remove('hide');
       diagnosticResult.className = 'diagnostic-result error';
@@ -561,7 +1144,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         intervalSeconds: intervalVal,
         alertRepeatCount: parseInt(alertRepeatCountInput.value, 10) || 1,
         alertRepeatIntervalSeconds: parseInt(alertRepeatIntervalInput.value, 10) || 30,
-        subscription: currentSubscription
+        subscription: currentSubscription,
+        deviceInfo: currentSubscription ? getClientDeviceInfo() : null
       })
     });
 
@@ -585,6 +1169,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       await saveSettings();
+      shouldShowPostSaveAlertHint = true;
+      renderPostSaveAlertHint();
       alert('알림 설정을 저장하고 감시를 시작했습니다.');
     } catch (error) {
       alert(`설정 저장 실패. ${error.message}`);
@@ -674,10 +1260,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     lastCheckTime.textContent = `${localFormattedCheckTime} (${relativeText})`;
+    renderNextCheckTime();
   }
 
   // 상대 시간을 실시간으로 1초마다 업데이트
   setInterval(renderLastCheckTime, 1000);
+  setInterval(renderNextCheckTime, 1000);
 
   // 알림 반복 횟수에 따라 간격 필드 활성화/비활성화
   function updateRepeatIntervalState() {

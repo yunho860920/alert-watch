@@ -5,6 +5,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Alert Watch - Console</title>
+  <link rel="icon" type="image/png" href="logo.png">
+  <meta property="og:title" content="Alert Watch - Console">
+  <meta property="og:description" content="실시간 재입고 및 품절 감지 시스템 - 품절 탐지견 컹컹!">
+  <meta property="og:image" content="thumbnail.png">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="index.css">
 </head>
@@ -24,11 +29,11 @@
         <div class="header-top">
           <div class="brand">
             <span class="brand-mark" aria-hidden="true">
-              <i class="fa-solid fa-satellite-dish"></i>
+              <img src="logo.png" alt="Alert Watch Logo" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
             </span>
             <div class="brand-info">
-              <strong>Alert Watch</strong>
-              <small>재입고 알리미</small>
+              <strong>품절 탐지견 컹컹!</strong>
+              <small>이거꼭살거야 딱기다려!</small>
             </div>
           </div>
           <div class="monitor-pill">
@@ -59,7 +64,20 @@
         
         <!-- Tab 1: Monitor Status -->
         <section class="tab-pane active" id="status-pane" aria-labelledby="status-tab-title">
-          <h2 id="status-tab-title" style="display:none;">실시간 감시 현황</h2>
+          <h2 id="status-tab-title" class="sr-only">실시간 감시 현황</h2>
+          <div id="push-onboarding-banner" class="push-onboarding-banner warning" role="status">
+            <div class="push-onboarding-icon" aria-hidden="true">
+              <i class="fa-regular fa-bell"></i>
+            </div>
+            <div class="push-onboarding-copy">
+              <strong id="push-onboarding-title">이 기기는 아직 알림을 받지 않습니다.</strong>
+              <span id="push-onboarding-detail">실시간 알림을 받으려면 브라우저 푸시 알림을 켜주세요.</span>
+            </div>
+            <button id="push-onboarding-action" class="banner-action" type="button">
+              <i class="fa-regular fa-bell"></i>
+              <span>알림 켜기</span>
+            </button>
+          </div>
           <div class="status-widget">
             <span class="widget-title">현재 판매 상태</span>
             
@@ -92,8 +110,28 @@
               <strong id="check-interval">-</strong>
             </div>
             <div class="metric-cell">
-              <span>알림 기기 수</span>
-              <strong id="registered-devices">0대</strong>
+              <span>다음 확인</span>
+              <strong id="next-check-time">-</strong>
+            </div>
+            <div class="metric-cell">
+              <span>알림 대상</span>
+              <strong id="registered-devices">0개</strong>
+            </div>
+          </div>
+
+          <div class="registered-device-panel" aria-labelledby="registered-device-title">
+            <div class="registered-device-header">
+              <div>
+                <h3 id="registered-device-title">알림이 발송되는 곳</h3>
+                <p>구매 가능 상태가 감지되면 아래 등록된 브라우저로 푸시 알림을 보냅니다.</p>
+              </div>
+              <button class="device-panel-link" type="button" onclick="switchTab('history-pane')">
+                <i class="fa-regular fa-bell"></i>
+                <span>알림 관리</span>
+              </button>
+            </div>
+            <div id="registered-device-list" class="registered-device-list">
+              <div class="registered-device-empty">아직 등록된 알림 대상이 없습니다.</div>
             </div>
           </div>
 
@@ -106,29 +144,26 @@
 
         <!-- Tab 2: Settings -->
         <section class="tab-pane" id="settings-pane" aria-labelledby="settings-tab-title">
-          <h2 id="settings-tab-title" style="display:none;">알림 받을 상품 설정</h2>
+          <h2 id="settings-tab-title" class="sr-only">알림 받을 상품 설정</h2>
           <form class="form-section" onsubmit="return false;">
-            
-            <div class="input-field-group full-width">
-              <label for="settings-url">상품 페이지 주소 (URL)</label>
-              <input type="url" id="settings-url" placeholder="https://구매하고싶은상품주소.com" required>
-            </div>
+            <section class="settings-group" aria-labelledby="basic-settings-title">
+              <div class="settings-group-header">
+                <h3 id="basic-settings-title">기본 설정</h3>
+                <p>감시할 상품 페이지와 상태 문구를 입력하세요.</p>
+              </div>
+              <div class="input-field-group full-width">
+                <label for="settings-url">상품 페이지 주소 (URL)</label>
+                <input type="url" id="settings-url" placeholder="https://구매하고싶은상품주소.com" required>
+              </div>
 
-            <div class="form-row-2">
               <div class="input-field-group">
-                <label for="settings-keyword">품절 표시 문구</label>
-                <input type="text" id="settings-keyword" placeholder="예: 품절, 매진, SOLD OUT" required>
+                <label for="settings-keyword">품절 또는 구매 가능 표시 문구</label>
+                <input type="text" id="settings-keyword" placeholder="예: 품절, 매진, SOLD OUT, 구매하기" required>
                 <small>페이지 상에 표시된 정확한 문구를 적어주세요.</small>
               </div>
+            </section>
 
-              <div class="input-field-group">
-                <label for="settings-css-selector">구매할 옵션명 (선택)</label>
-                <input type="text" id="settings-css-selector" placeholder="예: 블랙 M, 230">
-                <small>비워두면 상품 전체 상태 변화를 감시합니다.</small>
-              </div>
-            </div>
-
-            <fieldset class="condition-fieldset">
+            <fieldset class="condition-fieldset settings-group">
               <legend>언제 알림을 발송할까요?</legend>
               <label class="condition-label">
                 <input type="radio" name="settings-condition" id="condition-disappear" value="disappear" checked>
@@ -146,24 +181,49 @@
               </label>
             </fieldset>
 
-            <div class="form-row-2">
-              <div class="input-field-group">
-                <label for="settings-interval">재입고 확인 주기</label>
-                <input type="number" id="settings-interval" min="1" max="3600" value="30">
-                <small>초 단위 (최소 1초 이상)</small>
+            <section class="settings-group" aria-labelledby="alert-policy-title">
+              <div class="settings-group-header">
+                <h3 id="alert-policy-title">알림 정책</h3>
+                <p>확인 주기와 감지 후 알림 반복 방식을 정합니다.</p>
               </div>
-              
-              <div class="input-field-group">
-                <label for="settings-alert-repeat-count">알림 반복 횟수</label>
-                <input type="number" id="settings-alert-repeat-count" min="1" max="20" value="1">
-                <small>감지 시 전송 횟수 (1~20회)</small>
+              <div class="form-row-2">
+                <div class="input-field-group">
+                  <label for="settings-interval">재입고 확인 주기</label>
+                  <input type="number" id="settings-interval" min="1" max="3600" value="30">
+                  <small>초 단위 (최소 1초 이상)</small>
+                </div>
+                
+                <div class="input-field-group">
+                  <label for="settings-alert-repeat-count">알림 반복 횟수</label>
+                  <input type="number" id="settings-alert-repeat-count" min="1" max="20" value="1">
+                  <small>감지 시 전송 횟수 (1~20회)</small>
+                </div>
               </div>
-            </div>
 
-            <div class="input-field-group">
-              <label for="settings-alert-repeat-interval">반복 알림 간격</label>
-              <input type="number" id="settings-alert-repeat-interval" min="5" max="3600" value="30">
-              <small>반복 발송 사이의 간격 초 단위 (최소 5초)</small>
+              <div class="input-field-group">
+                <label for="settings-alert-repeat-interval">반복 알림 간격</label>
+                <input type="number" id="settings-alert-repeat-interval" min="5" max="3600" value="30">
+                <small>반복 발송 사이의 간격 초 단위 (최소 5초)</small>
+              </div>
+            </section>
+
+            <details class="advanced-settings">
+              <summary>
+                <i class="fa-solid fa-sliders"></i>
+                <span>고급 감시 필터</span>
+              </summary>
+              <div class="advanced-settings-body">
+                <div class="input-field-group">
+                  <label for="settings-css-selector">구매할 옵션명 또는 CSS 선택자 (선택)</label>
+                  <input type="text" id="settings-css-selector" placeholder="예: 블랙 M, 230">
+                  <small>비워두면 상품 전체 상태 변화를 감시합니다.</small>
+                </div>
+              </div>
+            </details>
+
+            <div id="post-save-alert-hint" class="post-save-alert-hint hide" role="status">
+              <i class="fa-regular fa-bell"></i>
+              <span>설정은 저장됐지만 이 기기는 아직 알림을 받지 않습니다. 현황 탭에서 알림을 켜주세요.</span>
             </div>
 
             <div class="diagnostic-box-container">
@@ -191,7 +251,7 @@
             <div class="guide-details">
               <ul>
                 <li><strong>백그라운드 지속 감시:</strong> 모니터링 엔진은 브라우저를 닫아도 백엔드 서버에서 24시간 작동하며 상태 변화 시 웹 푸시로 알려드립니다.</li>
-                <li><strong>수신 기기 등록:</strong> 우측 <strong>'이력 & 알림'</strong> 메뉴에서 <strong>[알림 켜기]</strong>를 눌러 수신 기기로 등록해 주셔야 실시간 알림을 받을 수 있습니다.</li>
+                <li><strong>알림 대상 등록:</strong> 현황 화면의 <strong>[알림 켜기]</strong> 또는 <strong>'이력 & 알림'</strong> 메뉴에서 현재 브라우저를 알림 대상으로 등록하면 실시간 푸시를 받을 수 있습니다.</li>
                 <li><strong>Render 서버 절전 문제:</strong> 무료 Render 호스팅 사용 시 15분 접속이 없으면 서버가 절전 상태로 돌입합니다. 24시간 감시를 이어가려면 <strong>UptimeRobot</strong> 서비스에 가입하신 후, 이 서버의 헬스체크 주소(<code>/api/health</code>)를 5분 주기로 찌르도록 등록해 두세요.</li>
               </ul>
             </div>
@@ -200,7 +260,7 @@
 
         <!-- Tab 3: History & Alert -->
         <section class="tab-pane" id="history-pane" aria-labelledby="history-tab-title">
-          <h2 id="history-tab-title" style="display:none;">이력 및 알림 연동</h2>
+          <h2 id="history-tab-title" class="sr-only">이력 및 알림 연동</h2>
           <div class="history-alert-layout">
             
             <!-- Push Register widget -->

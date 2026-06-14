@@ -3,6 +3,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const webpush = require('web-push');
@@ -44,6 +45,87 @@ function isLikelyCssSelector(value) {
     // 셀렉터 구문 에러(Unmatched selector 등)가 발생하면 일반 텍스트 매칭으로 전환하도록 false 리턴
     return false;
   }
+}
+
+function parseDeviceInfo(userAgent = '') {
+  const ua = String(userAgent || '');
+
+  let browser = '브라우저';
+  if (/Edg\//.test(ua)) {
+    browser = 'Edge';
+  } else if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) {
+    browser = 'Chrome';
+  } else if (/Firefox\//.test(ua)) {
+    browser = 'Firefox';
+  } else if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) {
+    browser = 'Safari';
+  }
+
+  let platform = '알 수 없는 기기';
+  if (/iPhone|iPad|iPod/.test(ua)) {
+    platform = 'iOS';
+  } else if (/Android/.test(ua)) {
+    platform = 'Android';
+  } else if (/Windows/.test(ua)) {
+    platform = 'Windows PC';
+  } else if (/Macintosh|Mac OS X/.test(ua)) {
+    platform = 'Mac';
+  } else if (/Linux/.test(ua)) {
+    platform = 'Linux';
+  }
+
+  const deviceType = /Mobile|Android|iPhone|iPad|iPod/.test(ua) ? 'mobile' : 'desktop';
+
+  return {
+    browser,
+    platform,
+    deviceType,
+    label: `${browser} · ${platform}`
+  };
+}
+
+function createSubscriptionRecord(subscription, deviceInfo, userAgent) {
+  const now = new Date().toISOString();
+  return {
+    ...subscription,
+    deviceInfo: {
+      ...parseDeviceInfo(userAgent),
+      ...(deviceInfo || {})
+    },
+    createdAt: subscription.createdAt || now,
+    lastSeenAt: now
+  };
+}
+
+function getSubscriptionId(endpoint = '') {
+  return crypto
+    .createHash('sha256')
+    .update(String(endpoint || ''))
+    .digest('hex')
+    .slice(0, 16);
+}
+
+function getRegisteredDevices(subscriptions = [], currentEndpoint = '') {
+  return subscriptions.map((sub, index) => {
+    const fallback = parseDeviceInfo('');
+    const deviceInfo = {
+      ...fallback,
+      ...(sub.deviceInfo || {})
+    };
+    const hasStoredDeviceInfo = Boolean(sub.deviceInfo);
+
+    return {
+      id: getSubscriptionId(sub.endpoint),
+      order: index + 1,
+      label: hasStoredDeviceInfo ? (deviceInfo.label || `${deviceInfo.browser} · ${deviceInfo.platform}`) : `등록된 브라우저 ${index + 1}`,
+      browser: deviceInfo.browser,
+      platform: deviceInfo.platform,
+      deviceType: deviceInfo.deviceType,
+      createdAt: sub.createdAt || null,
+      lastSeenAt: sub.lastSeenAt || null,
+      isCurrent: Boolean(currentEndpoint && sub.endpoint === currentEndpoint)
+    };
+  });
 }
 
 // 0. 레거시 config 및 history 마이그레이션 로직
@@ -119,7 +201,7 @@ app.get('/api/health', (req, res) => {
 
 // 3. 현재 상태 및 설정 통합 조회 API
 app.get('/api/status', (req, res) => {
-  const { clientId } = req.query;
+  const { clientId, currentEndpoint } = req.query;
   if (!clientId) {
     return res.status(400).json({ error: 'clientId가 누락되었습니다.' });
   }
@@ -136,6 +218,7 @@ app.get('/api/status', (req, res) => {
   }
 
   const config = configs[clientId] || {};
+  const subscriptions = config.subscriptions || [];
   const status = scraper.getStatusData(clientId);
   
   res.json({
@@ -147,13 +230,14 @@ app.get('/api/status', (req, res) => {
     condition: config.condition || 'disappear',
     alertRepeatCount: config.alertRepeatCount || 1,
     alertRepeatIntervalSeconds: config.alertRepeatIntervalSeconds || 30,
-    registeredDevicesCount: config.subscriptions ? config.subscriptions.length : 0
+    registeredDevicesCount: subscriptions.length,
+    registeredDevices: getRegisteredDevices(subscriptions, currentEndpoint || '')
   });
 });
 
 // 4. 감시 타겟 설정 변경 및 브라우저 구독 추가 API
 app.post('/api/settings', (req, res) => {
-  const { clientId, targetUrl, keyword, cssSelector, condition, intervalSeconds, subscription, alertRepeatCount, alertRepeatIntervalSeconds } = req.body;
+  const { clientId, targetUrl, keyword, cssSelector, condition, intervalSeconds, subscription, deviceInfo, alertRepeatCount, alertRepeatIntervalSeconds } = req.body;
   if (!clientId) {
     return res.status(400).json({ error: 'clientId가 누락되었습니다.' });
   }
@@ -183,11 +267,17 @@ app.post('/api/settings', (req, res) => {
   };
 
   if (subscription && subscription.endpoint) {
-    const isAlreadySubscribed = config.subscriptions.some(
-      sub => sub.endpoint === subscription.endpoint
-    );
-    if (!isAlreadySubscribed) {
-      config.subscriptions.push(subscription);
+    const existingIndex = config.subscriptions.findIndex(sub => sub.endpoint === subscription.endpoint);
+    const subscriptionRecord = createSubscriptionRecord(subscription, deviceInfo, req.headers['user-agent']);
+
+    if (existingIndex >= 0) {
+      config.subscriptions[existingIndex] = {
+        ...config.subscriptions[existingIndex],
+        ...subscriptionRecord,
+        createdAt: config.subscriptions[existingIndex].createdAt || subscriptionRecord.createdAt
+      };
+    } else {
+      config.subscriptions.push(subscriptionRecord);
       console.log(`[구독 추가] [${clientId}] 새 기기 등록 완료. (총 기기: ${config.subscriptions.length}대)`);
     }
   }
@@ -204,6 +294,60 @@ app.post('/api/settings', (req, res) => {
   scraper.startMonitoring(clientId);
 
   res.json({ message: '모니터링 설정 및 기기 구독이 성공적으로 완료되었습니다.', status: scraper.getStatusData(clientId) });
+});
+
+// 4-1. 등록된 브라우저 알림 대상 제거 API
+app.delete('/api/subscriptions/:subscriptionId', (req, res) => {
+  const { subscriptionId } = req.params;
+  const { clientId } = req.query;
+
+  if (!clientId) {
+    return res.status(400).json({ error: 'clientId가 누락되었습니다.' });
+  }
+
+  if (!subscriptionId) {
+    return res.status(400).json({ error: '삭제할 알림 대상이 지정되지 않았습니다.' });
+  }
+
+  const configPath = path.join(__dirname, 'config.json');
+  let configs = {};
+
+  if (fs.existsSync(configPath)) {
+    try {
+      configs = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (e) {
+      console.error('[구독 삭제] config.json 로딩 실패.', e.message);
+      return res.status(500).json({ error: '설정 파일을 읽지 못했습니다.' });
+    }
+  }
+
+  const config = configs[clientId];
+  if (!config || !Array.isArray(config.subscriptions)) {
+    return res.status(404).json({ error: '등록된 알림 대상이 없습니다.' });
+  }
+
+  const beforeCount = config.subscriptions.length;
+  config.subscriptions = config.subscriptions.filter(
+    sub => getSubscriptionId(sub.endpoint) !== subscriptionId
+  );
+
+  if (config.subscriptions.length === beforeCount) {
+    return res.status(404).json({ error: '삭제할 알림 대상을 찾지 못했습니다.' });
+  }
+
+  configs[clientId] = config;
+
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(configs, null, 2), 'utf8');
+  } catch (e) {
+    return res.status(500).json({ error: '알림 대상 삭제 중 에러가 발생했습니다.' });
+  }
+
+  res.json({
+    message: '알림 대상이 제거되었습니다.',
+    registeredDevicesCount: config.subscriptions.length,
+    registeredDevices: getRegisteredDevices(config.subscriptions)
+  });
 });
 
 // 5. 모니터링 시작 API
