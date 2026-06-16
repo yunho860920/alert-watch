@@ -15,4 +15,10 @@
 - [x] server.js API의 clientId 분기 처리
 - [x] scraper.js 다중 스케줄러(Map) 도입 및 자동 복구 구현
 - [ ] 멀티 브라우저 격리 동작 수동 검증
+- [x] 로컬 Mock 상품 테스트 기능 구현
+  - [x] server.js에 인메모리 Mock 상품 상태 정의 및 GET /mock-product 라우트 추가
+  - [x] server.js에 상태 변경용 POST /api/mock-product/toggle API 추가
+  - [x] public/index.html 대시보드 화면에 Mock 테스트 안내 추가
+  - [x] 품절 해제 및 알림 발송 동작 수동 검증 (가이드 작성 완료)
+
 

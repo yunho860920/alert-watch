@@ -13,6 +13,15 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// 로컬 테스트용 가상 상품 상태 객체 (메모리 상태 관리)
+let mockProductState = {
+  status: 'SOLD_OUT', // 'SOLD_OUT' 또는 'AVAILABLE'
+  options: [
+    { text: '블랙 M', val: 'black_m', isAvailable: false },
+    { text: '화이트 L', val: 'white_l', isAvailable: false }
+  ]
+};
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -660,6 +669,277 @@ app.post('/api/check-site', async (req, res) => {
       isKeywordFound: false,
       message: failMessage
     });
+  }
+});
+
+// 9. 로컬 테스트용 Mock 상품 상세 페이지 렌더링 라우트
+app.get('/mock-product', (req, res) => {
+  const anyAvailable = mockProductState.options.some(opt => opt.isAvailable);
+  const badgeClass = anyAvailable ? 'available' : 'soldout';
+  const badgeText = anyAvailable ? '구매 가능 (AVAILABLE)' : '품절 (SOLD OUT)';
+  const optionsHtml = mockProductState.options.map(opt => {
+    const text = opt.isAvailable ? `${opt.text} (구매가능)` : `${opt.text} (품절)`;
+    return `<option value="${opt.val}">${text}</option>`;
+  }).join('\n');
+
+  const html = `
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock Product Page - Alert Watch Test</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --bg-dark: #0d1117;
+      --panel-dark: #161b22;
+      --border-dark: #30363d;
+      --mint: #00f2fe;
+      --text-main: #f0f6fc;
+      --text-muted: #8b949e;
+      --red: #f85149;
+      --green: #56d364;
+    }
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Inter', -apple-system, sans-serif;
+      margin: 0;
+      padding: 40px 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .product-card {
+      background: var(--panel-dark);
+      border: 1px solid var(--border-dark);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 480px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      position: relative;
+    }
+    .badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+    .badge.soldout {
+      background-color: rgba(248, 81, 73, 0.15);
+      color: var(--red);
+      border: 1px solid rgba(248, 81, 73, 0.3);
+    }
+    .badge.available {
+      background-color: rgba(86, 211, 100, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(86, 211, 100, 0.3);
+    }
+    h1 {
+      font-size: 1.8rem;
+      margin: 0 0 10px 0;
+    }
+    .price {
+      font-size: 1.4rem;
+      color: var(--mint);
+      font-weight: bold;
+      margin-bottom: 25px;
+    }
+    .image-placeholder {
+      background: linear-gradient(135deg, #2b323c, #1f242d);
+      border-radius: 12px;
+      height: 200px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 4rem;
+      color: var(--text-muted);
+      margin-bottom: 25px;
+      border: 1px solid var(--border-dark);
+    }
+    .options-label {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      display: block;
+    }
+    select {
+      width: 100%;
+      padding: 12px;
+      background: var(--bg-dark);
+      border: 1px solid var(--border-dark);
+      color: var(--text-main);
+      border-radius: 8px;
+      font-size: 1rem;
+      outline: none;
+      cursor: pointer;
+    }
+    select:focus {
+      border-color: var(--mint);
+    }
+    .control-panel {
+      margin-top: 30px;
+      border-top: 1px dashed var(--border-dark);
+      padding-top: 20px;
+    }
+    .control-title {
+      font-size: 0.95rem;
+      font-weight: bold;
+      color: var(--mint);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      flex: 1;
+      padding: 12px;
+      border-radius: 8px;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button.btn-soldout {
+      background-color: var(--red);
+      color: #fff;
+    }
+    button.btn-soldout:hover {
+      opacity: 0.9;
+    }
+    button.btn-available {
+      background-color: var(--green);
+      color: #fff;
+    }
+    button.btn-available:hover {
+      opacity: 0.9;
+    }
+    .home-link {
+      display: block;
+      text-align: center;
+      margin-top: 20px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+    .home-link:hover {
+      color: var(--mint);
+    }
+  </style>
+</head>
+<body>
+  <div class="product-card">
+    <div class="badge ${badgeClass}">${badgeText}</div>
+    <div class="image-placeholder">
+      <i class="fa-solid fa-gift"></i>
+    </div>
+    <h1>Alert Watch 한정판 탐지견 인형</h1>
+    <div class="price">49,000원</div>
+    
+    <span class="options-label">상품 옵션 선택</span>
+    <select id="product-option" name="option_select">
+      ${optionsHtml}
+    </select>
+
+    <!-- Admin / Tester Control Panel -->
+    <div class="control-panel">
+      <div class="control-title">
+        <i class="fa-solid fa-gears"></i>
+        <span>테스트 컨트롤러 (품절 유무 설정)</span>
+      </div>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 15px 0; line-height: 1.4;">
+        여기서 상태를 바꾸면 다음 감시 주기 때 대시보드가 감지하여 푸시 알림을 보냅니다.
+      </p>
+      <div class="btn-group">
+        <button class="btn-soldout" onclick="toggleStatus('SOLD_OUT')">품절 상태로 설정</button>
+        <button class="btn-available" onclick="toggleStatus('AVAILABLE')">구매 가능으로 설정</button>
+      </div>
+    </div>
+    
+    <a href="/" class="home-link"><i class="fa-solid fa-arrow-left"></i> 대시보드로 돌아가기</a>
+  </div>
+
+  <script>
+    async function toggleStatus(status) {
+      try {
+        const res = await fetch('/api/mock-product/toggle', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status })
+        });
+        if (res.ok) {
+          location.reload();
+        } else {
+          alert('상태 변경 실패');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('서버 통신 실패');
+      }
+    }
+  </script>
+</body>
+</html>
+  `;
+  res.send(html);
+});
+
+// 10. 로컬 테스트용 Mock 상품 상태 조회 API 라우트
+app.get('/api/mock-product/state', (req, res) => {
+  return res.json(mockProductState);
+});
+
+// 10.5. 로컬 테스트용 Mock 상품 상태 변경 API 라우트
+app.post('/api/mock-product/toggle', (req, res) => {
+  const { status, optionVal, isAvailable } = req.body;
+  if (status === 'SOLD_OUT' || status === 'AVAILABLE') {
+    mockProductState.status = status;
+    mockProductState.options.forEach(opt => {
+      opt.isAvailable = (status === 'AVAILABLE');
+    });
+    console.log(`[테스트 모듈] Mock 상품 상태가 전체 ${status} 상태로 변경되었습니다.`);
+    return res.json({ success: true, status: mockProductState.status, options: mockProductState.options });
+  } else if (optionVal !== undefined && isAvailable !== undefined) {
+    const opt = mockProductState.options.find(o => o.val === optionVal);
+    if (opt) {
+      opt.isAvailable = Boolean(isAvailable);
+      const anyAvailable = mockProductState.options.some(o => o.isAvailable);
+      mockProductState.status = anyAvailable ? 'AVAILABLE' : 'SOLD_OUT';
+      console.log(`[테스트 모듈] Mock 상품 옵션 '${opt.text}'가 ${isAvailable ? 'AVAILABLE' : 'SOLD_OUT'} 상태로 변경되었습니다.`);
+      return res.json({ success: true, status: mockProductState.status, options: mockProductState.options });
+    }
+    return res.status(404).json({ error: '해당 옵션을 찾을 수 없습니다.' });
+  }
+  return res.status(400).json({ error: '유효하지 않은 요청 데이터입니다.' });
+});
+
+// 11. 즉시 감시 실행 API 라우트
+app.post('/api/monitor/scan-now', async (req, res) => {
+  const { clientId } = req.query;
+  if (!clientId) {
+    return res.status(400).json({ error: 'clientId가 누락되었습니다.' });
+  }
+
+  try {
+    console.log(`[테스트 모듈] [${clientId}] 즉시 감시(Scan Now) 요청을 수신했습니다.`);
+    await scraper.checkCancellation(clientId);
+    const status = scraper.getStatusData(clientId);
+    return res.json({ success: true, message: '감시가 즉시 실행되었습니다.', status });
+  } catch (error) {
+    console.error(`[테스트 모듈] [${clientId}] 즉시 감시 실행 중 에러:`, error.message);
+    return res.status(500).json({ error: `즉시 감시 실행 실패: ${error.message}` });
   }
 });
 
