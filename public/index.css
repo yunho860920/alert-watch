@@ -1726,3 +1726,227 @@ html, body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Local Test Simulator Card styling */
+.test-simulator-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  margin: 24px 0;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.test-simulator-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(0, 242, 254, 0.3), transparent);
+}
+
+.simulator-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.simulator-header h3 {
+  font-size: 0.96rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.simulator-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 99px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.status-indicator-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--text-muted);
+}
+
+.status-indicator-dot.available {
+  background-color: var(--mint);
+  box-shadow: 0 0 8px var(--mint);
+}
+
+.status-indicator-dot.soldout {
+  background-color: var(--coral);
+  box-shadow: 0 0 8px var(--coral);
+}
+
+.simulator-desc {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 16px;
+}
+
+.option-toggles-container {
+  margin-top: 18px;
+  border-top: 1px dashed var(--panel-border);
+  padding-top: 14px;
+}
+
+.option-toggle-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.simulator-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 18px;
+}
+
+.simulator-option-switch-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: var(--transition);
+}
+
+.simulator-option-switch-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.simulator-option-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 6px;
+}
+
+/* Switch styling */
+.switch-container {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.switch-container input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--slate);
+  transition: .2s;
+  border-radius: 20px;
+}
+
+.switch-slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .2s;
+  border-radius: 50%;
+}
+
+input:checked + .switch-slider {
+  background-color: var(--mint);
+}
+
+input:focus + .switch-slider {
+  box-shadow: 0 0 1px var(--mint);
+}
+
+input:checked + .switch-slider:before {
+  transform: translateX(14px);
+}
+
+/* Button variants for status controller */
+.btn-soldout-tint {
+  color: var(--coral) !important;
+  border-color: rgba(239, 68, 68, 0.25) !important;
+  background: rgba(239, 68, 68, 0.04) !important;
+}
+
+.btn-soldout-tint:hover {
+  background: rgba(239, 68, 68, 0.08) !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+.btn-available-tint {
+  color: var(--mint) !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+  background: rgba(16, 185, 129, 0.04) !important;
+}
+
+.btn-available-tint:hover {
+  background: rgba(16, 185, 129, 0.08) !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+
+.all-status-control {
+  border-top: 1px dashed var(--panel-border);
+  padding-top: 14px;
+}
+
+/* Media query adjustment */
+@media (max-width: 600px) {
+  .simulator-options-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Shiba badge image floating animation */
+@keyframes shibaFloat {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+  100% { transform: translateY(0px); }
+}
+
+.shiba-badge-img {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  animation: shibaFloat 3s infinite ease-in-out;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}

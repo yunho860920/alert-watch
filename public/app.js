@@ -860,7 +860,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     ticketStatusBadge.classList.add('unknown');
-    ticketStatusBadge.innerHTML = `${SHIBA_UNKNOWN_SVG}<span>확인하는 중</span>`;
+    ticketStatusBadge.innerHTML = `<img src="thumbnail.png" alt="확인 중" class="shiba-badge-img"><span>확인하는 중</span>`;
     heroStatusText.textContent = '페이지 상태를 확인하는 중입니다.';
   }
 
@@ -1370,6 +1370,203 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
     });
+  }
+
+  // -------------------------------------------------------------
+  // 로컬 테스트 시뮬레이터 연동 로직
+  // -------------------------------------------------------------
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+  if (!isLocalhost) {
+    const simulatorCard = document.querySelector('.test-simulator-card');
+    if (simulatorCard) {
+      simulatorCard.style.display = 'none';
+    }
+  } else {
+    const fillMockSettingsBtn = document.getElementById('fill-mock-settings-btn');
+    const scanNowBtn = document.getElementById('scan-now-btn');
+    const simulatorOptionsList = document.getElementById('simulator-options-list');
+    const setMockSoldoutBtn = document.getElementById('set-mock-soldout-btn');
+    const setMockAvailableBtn = document.getElementById('set-mock-available-btn');
+    const simulatorStatusIndicator = document.getElementById('simulator-status-indicator');
+    const simulatorStatusText = document.getElementById('simulator-status-text');
+
+    // 가상 상품 상태를 백엔드로부터 가져와 UI에 그리는 함수
+    async function updateMockProductUI() {
+      if (!simulatorOptionsList || !simulatorStatusIndicator || !simulatorStatusText) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/mock-product/state');
+        if (!response.ok) {
+          throw new Error('가상 상품 상태를 가져오지 못했습니다.');
+        }
+        const state = await response.json();
+
+        // UI 상태 배지 업데이트
+        const anyAvailable = state.options.some(opt => opt.isAvailable);
+        const allAvailable = state.options.every(opt => opt.isAvailable);
+        
+        simulatorStatusIndicator.className = 'status-indicator-dot';
+        if (allAvailable) {
+          simulatorStatusIndicator.classList.add('available');
+          simulatorStatusText.textContent = '전체 구매 가능';
+        } else if (anyAvailable) {
+          simulatorStatusIndicator.classList.add('available');
+          simulatorStatusText.textContent = '일부 옵션 구매 가능';
+        } else {
+          simulatorStatusIndicator.classList.add('soldout');
+          simulatorStatusText.textContent = '전체 품절';
+        }
+
+        // 옵션 토글 그리드 렌더링
+        simulatorOptionsList.innerHTML = '';
+        state.options.forEach(opt => {
+          const card = document.createElement('div');
+          card.className = 'simulator-option-switch-card';
+
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'simulator-option-name';
+          nameSpan.textContent = opt.text;
+          nameSpan.title = opt.text;
+
+          const switchLabel = document.createElement('label');
+          switchLabel.className = 'switch-container';
+
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = opt.isAvailable;
+          input.dataset.val = opt.val;
+          input.dataset.text = opt.text;
+          input.addEventListener('change', async (e) => {
+            const isChecked = e.target.checked;
+            const val = e.target.dataset.val;
+            await toggleMockOption(val, isChecked);
+          });
+
+          const slider = document.createElement('span');
+          slider.className = 'switch-slider';
+
+          switchLabel.appendChild(input);
+          switchLabel.appendChild(slider);
+
+          card.appendChild(nameSpan);
+          card.appendChild(switchLabel);
+          simulatorOptionsList.appendChild(card);
+        });
+      } catch (err) {
+        console.error('[시뮬레이터] 상태 업데이트 실패.', err.message);
+        simulatorStatusText.textContent = '조회 실패';
+      }
+    }
+
+    // 가상 상품 옵션 상태 개별 변경 요청 함수
+    async function toggleMockOption(optionVal, isAvailable) {
+      try {
+        const response = await fetch('/api/mock-product/toggle', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ optionVal, isAvailable })
+        });
+        if (!response.ok) {
+          throw new Error('옵션 상태 변경에 실패했습니다.');
+        }
+        await updateMockProductUI();
+      } catch (err) {
+        alert(`상태 토글 오류. ${err.message}`);
+        await updateMockProductUI();
+      }
+    }
+
+    // 가상 상품 전체 상태 변경 요청 함수
+    async function toggleAllMockStatus(status) {
+      try {
+        const response = await fetch('/api/mock-product/toggle', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status })
+        });
+        if (!response.ok) {
+          throw new Error('전체 상태 변경에 실패했습니다.');
+        }
+        await updateMockProductUI();
+      } catch (err) {
+        alert(`상태 설정 오류. ${err.message}`);
+      }
+    }
+
+    // 자동 설정 입력 버튼
+    if (fillMockSettingsBtn) {
+      fillMockSettingsBtn.addEventListener('click', () => {
+        settingsUrl.value = window.location.origin + '/mock-product';
+        settingsKeyword.value = '구매가능';
+        
+        const appearRadio = document.getElementById('condition-appear');
+        if (appearRadio) {
+          appearRadio.checked = true;
+        }
+        
+        settingsCssSelector.value = '';
+        intervalInput.value = '5';
+        alertRepeatCountInput.value = '1';
+        alertRepeatIntervalInput.value = '30';
+        
+        if (typeof updateRepeatIntervalState === 'function') {
+          updateRepeatIntervalState();
+        }
+
+        hasUnsavedChanges = true;
+        alert('가상 상품 테스트 설정이 폼에 자동 입력되었습니다. [설정 저장 및 시작] 버튼을 누르면 즉시 연동됩니다.');
+        settingsUrl.focus();
+      });
+    }
+
+    // 즉시 감시 실행 버튼
+    if (scanNowBtn) {
+      scanNowBtn.addEventListener('click', async () => {
+        if (isBtnLocked) {
+          return;
+        }
+        
+        isBtnLocked = true;
+        scanNowBtn.disabled = true;
+        const originalHtml = scanNowBtn.innerHTML;
+        scanNowBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>감시 중</span>';
+
+        try {
+          const response = await fetch(`/api/monitor/scan-now?clientId=${clientId}`, {
+            method: 'POST'
+          });
+          if (!response.ok) {
+            throw new Error('즉시 감시 실행 요청 실패');
+          }
+          await updateStatus();
+        } catch (err) {
+          alert(`감시 실행 실패. ${err.message}`);
+        } finally {
+          isBtnLocked = false;
+          scanNowBtn.disabled = false;
+          scanNowBtn.innerHTML = originalHtml;
+        }
+      });
+    }
+
+    // 전체 제어 버튼
+    if (setMockSoldoutBtn) {
+      setMockSoldoutBtn.addEventListener('click', () => toggleAllMockStatus('SOLD_OUT'));
+    }
+    if (setMockAvailableBtn) {
+      setMockAvailableBtn.addEventListener('click', () => toggleAllMockStatus('AVAILABLE'));
+    }
+
+    // 주기적으로 가상 상품의 상태를 가져와 대시보드 시뮬레이터 동기화
+    updateMockProductUI();
+    setInterval(updateMockProductUI, 4000);
   }
 
   updateStatus();
