@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const srcLogo = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\5b3dd4d2-84d5-4f7f-bb55-c7a431c67f97\\detective_shiba_icon_left_side_glass_1781235751376.png";
-const srcThumbnail = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\5b3dd4d2-84d5-4f7f-bb55-c7a431c67f97\\detective_shiba_thumbnail_1781235648917.png";
+const srcLogo = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\bf9abc1d-a22b-49c1-b798-33fad237eb1e\\media__1781590021959.jpg";
+const srcThumbnail = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\bf9abc1d-a22b-49c1-b798-33fad237eb1e\\media__1781590026464.jpg";
 
 const destLogo = path.join(__dirname, 'public', 'logo.png');
 const destThumbnail = path.join(__dirname, 'public', 'thumbnail.png');
