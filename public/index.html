@@ -368,6 +368,22 @@
     </footer>
   </div>
 
+  <!-- Floating Bottom Navigation -->
+  <nav class="bottom-nav" aria-label="하단 네비게이션">
+    <button class="tab-btn active" data-tab="status-pane" onclick="switchTab('status-pane')" type="button">
+      <i class="fa-solid fa-chart-line"></i>
+      <span>현황</span>
+    </button>
+    <button class="tab-btn" data-tab="settings-pane" onclick="switchTab('settings-pane')" type="button">
+      <i class="fa-solid fa-sliders"></i>
+      <span>설정</span>
+    </button>
+    <button class="tab-btn" data-tab="history-pane" onclick="switchTab('history-pane')" type="button">
+      <i class="fa-solid fa-clock-rotate-left"></i>
+      <span>이력 & 알림</span>
+    </button>
+  </nav>
+
   <script>
     // Tab switching controller
     function switchTab(tabId) {
@@ -389,11 +405,11 @@
         targetPane.classList.add('active');
       }
 
-      // Activate clicked tab button
-      const clickedBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
-      if (clickedBtn) {
-        clickedBtn.classList.add('active');
-      }
+      // Activate clicked tab buttons (handles both top and bottom nav buttons)
+      const clickedBtns = document.querySelectorAll(`.tab-btn[data-tab="${tabId}"]`);
+      clickedBtns.forEach(btn => {
+        btn.classList.add('active');
+      });
     }
   </script>
   <script src="app.js"></script>
