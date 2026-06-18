@@ -329,9 +329,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   }
 
-  // User-Agent 또는 쿼리 파라미터 기반 토스 모드 감지
-  const uaString = navigator.userAgent;
-  const isTossMode = /Toss/i.test(uaString) || new URLSearchParams(window.location.search).get('mode') === 'toss';
+  // User-Agent 또는 쿼리 파라미터 기반 토스 모드 감지 (인앱토스 빌드용 강제 고정)
+  const isTossMode = true;
 
   // 토스 미니앱 환경 초기 셋업 함수
   function setupTossEnvironment() {
@@ -1738,7 +1737,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // -------------------------------------------------------------
   // 로컬 테스트 시뮬레이터 연동 로직
   // -------------------------------------------------------------
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const isLocalhost = false;
 
   if (!isLocalhost) {
     const simulatorCard = document.querySelector('.test-simulator-card');
@@ -1939,14 +1938,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   };
 
-  // 1. mock=true 쿼리스트링 파라미터가 있을 때만 mock-feature 요소들 노출
-  const urlParams = new URLSearchParams(window.location.search);
-  const isMockParam = urlParams.get('mock') === 'true';
-  if (isMockParam) {
-    document.querySelectorAll('.mock-feature').forEach(el => {
-      el.classList.remove('hide');
-    });
-  }
+  // 1. 인앱토스 빌드에서는 mock 파라미터 노출을 방지하기 위해 항상 false로 고정
+  const isMockParam = false;
 
   // 2. 이메일 프리셋 선택 이벤트 핸들러
   const emailProviderSelect = document.getElementById('setup-email-provider');

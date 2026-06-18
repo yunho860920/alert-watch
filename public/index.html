@@ -65,7 +65,7 @@
         <!-- Tab 1: Monitor Status -->
         <section class="tab-pane active" id="status-pane" aria-labelledby="status-tab-title">
           <h2 id="status-tab-title" class="sr-only">실시간 감시 현황</h2>
-          <div id="push-onboarding-banner" class="push-onboarding-banner warning" role="status">
+          <div id="push-onboarding-banner" class="push-onboarding-banner warning hide" style="display: none;" role="status">
             <div class="push-onboarding-icon" aria-hidden="true">
               <i class="fa-regular fa-bell"></i>
             </div>
@@ -242,7 +242,7 @@
 
               <div class="notification-channels-grid">
                 <!-- 1. PWA (기기 푸시) -->
-                <div class="channel-card" id="channel-pwa">
+                <div class="channel-card hide" id="channel-pwa" style="display: none;">
                   <div class="channel-card-header">
                     <div class="channel-icon">
                       <i class="fa-solid fa-mobile-screen-button"></i>
@@ -264,7 +264,7 @@
                 </div>
 
                 <!-- 2. Telegram (텔레그램) -->
-                <div class="channel-card" id="channel-telegram">
+                <div class="channel-card hide" id="channel-telegram" style="display: none;">
                   <div class="channel-card-header">
                     <div class="channel-icon">
                       <i class="fa-brands fa-telegram"></i>
@@ -304,7 +304,7 @@
                 </div>
 
                 <!-- 3. Email (이메일) -->
-                <div class="channel-card" id="channel-email">
+                <div class="channel-card hide" id="channel-email" style="display: none;">
                   <div class="channel-card-header">
                     <div class="channel-icon">
                       <i class="fa-solid fa-envelope"></i>
@@ -364,7 +364,7 @@
                 </div>
 
                 <!-- 4. Apps in Toss (토스 알림) -->
-                <div class="channel-card hide" id="channel-toss">
+                <div class="channel-card" id="channel-toss" style="display: block;">
                   <div class="channel-card-header">
                     <div class="channel-icon" style="background: rgba(0, 100, 255, 0.15); color: #0064ff;">
                       <i class="fa-solid fa-square-envelope"></i>
@@ -499,7 +499,7 @@
           <div class="history-alert-layout">
             
             <!-- Push Register widget -->
-            <div class="alert-control-box">
+            <div class="alert-control-box hide" style="display: none;">
               <div class="alert-box-header">
                 <span>브라우저 웹 푸시 알림</span>
                 <span id="push-status-label" class="push-label-badge">비활성화</span>
