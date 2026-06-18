@@ -1,8 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 
-const srcLogo = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\bf9abc1d-a22b-49c1-b798-33fad237eb1e\\media__1781590021959.jpg";
-const srcThumbnail = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\bf9abc1d-a22b-49c1-b798-33fad237eb1e\\media__1781590026464.jpg";
+const localOriginalLogo = path.join(__dirname, 'public', 'Originals', 'logo.png');
+const localOriginalThumbnail = path.join(__dirname, 'public', 'Originals', 'Gemini_Generated_Image_phpovpphpovpphpo.png');
+
+const srcLogo = fs.existsSync(localOriginalLogo) 
+  ? localOriginalLogo 
+  : "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\bf9abc1d-a22b-49c1-b798-33fad237eb1e\\media__1781590021959.jpg";
+
+const srcThumbnail = fs.existsSync(localOriginalThumbnail)
+  ? localOriginalThumbnail
+  : "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\bf9abc1d-a22b-49c1-b798-33fad237eb1e\\media__1781590026464.jpg";
+
 const srcSleeping = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\6e7e13dd-8dd0-4fc3-9005-80bb3d3c8fbf\\sleeping_detective_shiba_2d_1781627118802.png";
 const srcHappy = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\6e7e13dd-8dd0-4fc3-9005-80bb3d3c8fbf\\happy_detective_shiba_2d_1781627135838.png";
 
