@@ -1,5 +1,11 @@
 // 백엔드 API와 통신해 감시 상태, 설정 저장, 브라우저 알림을 제어하는 스크립트
 document.addEventListener('DOMContentLoaded', async () => {
+  // 로컬 호스트 환경 여부 확인하여 아닌 경우 not-local 클래스 추가
+  const isLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+  if (!isLocal) {
+    document.body.classList.add('not-local');
+  }
+
   // 로컬 고유 클라이언트 식별자 관리
   let clientId = localStorage.getItem('alertWatchClientId');
   if (!clientId) {
@@ -40,6 +46,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   const pushOnboardingAction = document.getElementById('push-onboarding-action');
   const postSaveAlertHint = document.getElementById('post-save-alert-hint');
 
+  // 토스 스마트 발송 UI 요소 바인딩
+  const tossOnboardingBanner = document.getElementById('toss-onboarding-banner');
+  const tossOnboardingAction = document.getElementById('toss-onboarding-action');
+  const tossStatusBadge = document.getElementById('toss-status-badge');
+  const setupTossUserkey = document.getElementById('setup-toss-userkey');
+  const btnTossAgreement = document.getElementById('btn-toss-agreement');
+  const btnTossTest = document.getElementById('btn-toss-test');
+  const tossUserPanel = document.getElementById('toss-user-panel');
+  const tossUserList = document.getElementById('toss-user-list');
+  const channelTossCard = document.getElementById('channel-toss');
+  const channelPwaCard = document.getElementById('channel-pwa');
+
   let isBtnLocked = false;
   let serviceWorkerReg = null;
   let currentSubscription = null;
@@ -53,6 +71,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastStatusAlerted = null;
   let hasUnsavedChanges = false;
   let shouldShowPostSaveAlertHint = false;
+
+  function playAlertSound() {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const playTone = (delay, duration, freq) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime + delay);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + delay + duration);
+        osc.start(audioCtx.currentTime + delay);
+        osc.stop(audioCtx.currentTime + delay + duration);
+      };
+      playTone(0, 0.35, 880);
+      playTone(0.45, 0.35, 880);
+    } catch (e) {
+      console.warn('[오디오] 재생 실패:', e);
+    }
+  }
+
+  function triggerVibration() {
+    if (navigator.vibrate) {
+      navigator.vibrate([200, 100, 200]);
+    }
+  }
 
   function showInAppToast(targetUrl, availableOptions = []) {
     let toast = document.getElementById('in-app-toast');
@@ -198,9 +243,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (state === 'unsupported') {
-      pushOnboardingTitle.textContent = '이 브라우저는 푸시 알림을 지원하지 않습니다.';
-      pushOnboardingDetail.textContent = '다른 최신 브라우저에서 접속하면 실시간 알림을 받을 수 있습니다.';
-      pushOnboardingAction.innerHTML = '<i class="fa-solid fa-ban"></i><span>지원 안 됨</span>';
+      const ua = navigator.userAgent;
+      const isInApp = /Toss/i.test(ua) || /KAKAOTALK/i.test(ua) || /Line/i.test(ua);
+      if (isInApp) {
+        pushOnboardingTitle.textContent = '인앱 브라우저에서는 알림이 제한됩니다.';
+        pushOnboardingDetail.textContent = '우측 상단 메뉴를 눌러 [기본 브라우저로 열기] 또는 [Safari/Chrome으로 열기] 후 알림을 켜주세요!';
+        pushOnboardingAction.innerHTML = '<i class="fa-solid fa-arrow-up-right-from-square"></i><span>외부 브라우저 권장</span>';
+      } else {
+        pushOnboardingTitle.textContent = '이 브라우저는 푸시 알림을 지원하지 않습니다.';
+        pushOnboardingDetail.textContent = '다른 최신 브라우저에서 접속하면 실시간 알림을 받을 수 있습니다.';
+        pushOnboardingAction.innerHTML = '<i class="fa-solid fa-ban"></i><span>지원 안 됨</span>';
+      }
       pushOnboardingAction.disabled = true;
       return;
     }
@@ -274,6 +327,225 @@ document.addEventListener('DOMContentLoaded', async () => {
       deviceType,
       label: `${browser} · ${platform}`
     };
+  }
+
+  // User-Agent 또는 쿼리 파라미터 기반 토스 모드 감지
+  const uaString = navigator.userAgent;
+  const isTossMode = /Toss/i.test(uaString) || new URLSearchParams(window.location.search).get('mode') === 'toss';
+
+  // 토스 미니앱 환경 초기 셋업 함수
+  function setupTossEnvironment() {
+    if (isTossMode) {
+      if (tossOnboardingBanner) tossOnboardingBanner.classList.remove('hide');
+      if (tossUserPanel) tossUserPanel.classList.remove('hide');
+      if (channelTossCard) channelTossCard.classList.remove('hide');
+      
+      if (pushOnboardingBanner) pushOnboardingBanner.classList.add('hide');
+      if (channelPwaCard) channelPwaCard.classList.add('hide');
+      
+      // 토스용 가상 userKey 생성 및 로드 (개발/테스트 목적)
+      let storedTossKey = localStorage.getItem('alertWatchTossUserKey');
+      if (!storedTossKey) {
+        storedTossKey = 'tossUser_' + Math.floor(10000000 + Math.random() * 90000000);
+        localStorage.setItem('alertWatchTossUserKey', storedTossKey);
+      }
+      if (setupTossUserkey) {
+        setupTossUserkey.value = storedTossKey;
+      }
+    } else {
+      if (tossOnboardingBanner) tossOnboardingBanner.classList.add('hide');
+      if (tossUserPanel) tossUserPanel.classList.add('hide');
+      if (channelTossCard) channelTossCard.classList.add('hide');
+    }
+  }
+
+  // 모의 토스 알림 동의 API 함수 (인앱용 Mock SDK)
+  function requestMockNotificationAgreement(params) {
+    if (typeof window.requestNotificationAgreement === 'function') {
+      return window.requestNotificationAgreement(params);
+    }
+    
+    // 일반 브라우저(로컬 테스트) 폴백 처리
+    const confirmed = confirm("[Mock Toss SDK] 알림 수신에 동의하시겠습니까?\n(확인을 누르면 수신 동의가 완료됩니다.)");
+    if (confirmed) {
+      setTimeout(() => {
+        params.onEvent({ type: 'newAgreement' });
+      }, 300);
+    } else {
+      setTimeout(() => {
+        params.onEvent({ type: 'agreementRejected' });
+      }, 300);
+    }
+    
+    return () => {
+      console.log('[Mock SDK] 리스너 정리가 완료되었습니다.');
+    };
+  }
+
+  // 토스 알림 동의 처리 이벤트 핸들러
+  async function handleTossAgreement() {
+    const userKey = localStorage.getItem('alertWatchTossUserKey');
+    if (!userKey || isBtnLocked) return;
+    
+    isBtnLocked = true;
+    const cleanup = requestMockNotificationAgreement({
+      options: {
+        templateCode: 'ALERT_WATCH_CANCELLATION',
+      },
+      onEvent: async ({ type }) => {
+        if (type === 'newAgreement' || type === 'alreadyAgreed') {
+          console.log('토스 알림 수신 동의 획득 완료:', type);
+          try {
+            const response = await fetch('/api/toss/register', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ clientId, userKey })
+            });
+            if (response.ok) {
+              alert('토스 알림 계정 연동 성공!');
+              await updateStatus();
+            } else {
+              const err = await response.json();
+              alert(`연동 실패: ${err.error}`);
+            }
+          } catch (e) {
+            console.error('서버 연동 오류:', e);
+          }
+        } else if (type === 'agreementRejected') {
+          console.log('토스 알림 수신 동의 거부');
+        }
+        cleanup();
+        isBtnLocked = false;
+      },
+      onError: (error) => {
+        console.error('토스 알림 동의 에러:', error);
+        alert('알림 동의 요청 중 오류가 발생했습니다.');
+        cleanup();
+        isBtnLocked = false;
+      },
+    });
+  }
+
+  // 토스 연동 사용자 목록 렌더링 함수
+  function renderTossUsers(tossUserKeys = []) {
+    if (!tossUserList) return;
+    tossUserList.innerHTML = '';
+
+    const currentTossKey = localStorage.getItem('alertWatchTossUserKey');
+
+    if (tossUserKeys.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.fontSize = '0.85rem';
+      empty.style.color = 'var(--text-muted)';
+      empty.style.padding = '10px 0';
+      empty.textContent = '연동된 토스 계정이 없습니다. 수신 동의를 통해 등록해 주세요.';
+      tossUserList.appendChild(empty);
+      
+      if (tossStatusBadge) {
+        tossStatusBadge.textContent = '연동 없음';
+        tossStatusBadge.className = 'channel-status';
+        tossStatusBadge.style.backgroundColor = '';
+        tossStatusBadge.style.color = '';
+      }
+      if (btnTossTest) btnTossTest.disabled = true;
+      return;
+    }
+
+    let isCurrentTossKeyRegistered = false;
+
+    tossUserKeys.forEach((key) => {
+      const item = document.createElement('div');
+      item.className = 'registered-device-item';
+
+      const icon = document.createElement('div');
+      icon.className = 'registered-device-icon';
+      icon.innerHTML = '<i class="fa-solid fa-square-envelope" style="color: #0064ff;"></i>';
+
+      const copy = document.createElement('div');
+      copy.className = 'registered-device-copy';
+
+      const title = document.createElement('strong');
+      title.textContent = `토스 계정 · ${key}`;
+
+      const meta = document.createElement('span');
+      meta.textContent = '수신 상태: 활성화 (Toss API)';
+
+      copy.appendChild(title);
+      copy.appendChild(meta);
+
+      item.appendChild(icon);
+      item.appendChild(copy);
+
+      const isCurrent = (key === currentTossKey);
+      if (isCurrent) {
+        isCurrentTossKeyRegistered = true;
+        const current = document.createElement('span');
+        current.className = 'registered-device-current';
+        current.style.backgroundColor = '#0064ff';
+        current.textContent = '현재 계정';
+        item.appendChild(current);
+      }
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'registered-device-remove';
+      removeBtn.type = 'button';
+      removeBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i><span>해제</span>';
+      removeBtn.addEventListener('click', () => removeTossUser(key));
+      item.appendChild(removeBtn);
+
+      tossUserList.appendChild(item);
+    });
+
+    if (tossStatusBadge) {
+      if (isCurrentTossKeyRegistered) {
+        tossStatusBadge.textContent = '수신 가능 (연동 완료)';
+        tossStatusBadge.className = 'channel-status active';
+        tossStatusBadge.style.backgroundColor = 'rgba(0, 100, 255, 0.15)';
+        tossStatusBadge.style.color = '#0064ff';
+        if (btnTossTest) btnTossTest.disabled = false;
+        
+        // 온보딩 배너 숨기기
+        if (tossOnboardingBanner) tossOnboardingBanner.classList.add('hide');
+      } else {
+        tossStatusBadge.textContent = '다른 계정 등록됨';
+        tossStatusBadge.className = 'channel-status';
+        tossStatusBadge.style.backgroundColor = '';
+        tossStatusBadge.style.color = '';
+        if (btnTossTest) btnTossTest.disabled = true;
+        if (tossOnboardingBanner) tossOnboardingBanner.classList.remove('hide');
+      }
+    }
+  }
+
+  // 토스 사용자 연동 해제 함수
+  async function removeTossUser(userKey) {
+    if (isBtnLocked) return;
+    const confirmed = confirm(`토스 계정 ${userKey}의 알림 연동을 해제하시겠습니까?`);
+    if (!confirmed) return;
+
+    isBtnLocked = true;
+    try {
+      const response = await fetch('/api/toss/unregister', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ clientId, userKey })
+      });
+      if (response.ok) {
+        alert('토스 연동 해제 완료!');
+        await updateStatus();
+      } else {
+        const err = await response.json();
+        alert(`해제 실패: ${err.error}`);
+      }
+    } catch (e) {
+      console.error('연동 해제 오류:', e);
+    } finally {
+      isBtnLocked = false;
+    }
   }
 
   function formatDeviceTime(value) {
@@ -448,7 +720,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       setMonitoringState(data.isMonitoring);
-      updateStatusBadge(shouldShowCurrentStatus ? data.lastStatus : 'UNKNOWN', shouldShowCurrentStatus ? data.availableOptions : []);
+      const targetStatus = data.isMonitoring ? (shouldShowCurrentStatus ? data.lastStatus : 'UNKNOWN') : 'UNKNOWN';
+      updateStatusBadge(targetStatus, shouldShowCurrentStatus && data.isMonitoring ? data.availableOptions : []);
       renderOptionsList(shouldShowCurrentStatus ? data.allOptions : []);
 
       if (data.lastCheckTime) {
@@ -478,8 +751,96 @@ document.addEventListener('DOMContentLoaded', async () => {
       registeredDevices.textContent = `${registeredDeviceCount}개`;
       renderRegisteredDevices(registeredDeviceItems);
 
+      // 토스 연동 사용자 목록 렌더링 호출
+      renderTossUsers(data.tossUserKeys || []);
+
+      // 3대 알림 수신 채널 배지 상태 갱신
+      const pwaBadge = document.getElementById('pwa-status-badge');
+      const telegramBadge = document.getElementById('telegram-status-badge');
+      const emailBadge = document.getElementById('email-status-badge');
+      const pwaCard = document.getElementById('channel-pwa');
+      const telegramCard = document.getElementById('channel-telegram');
+      const emailCard = document.getElementById('channel-email');
+
+      const pwaState = getPushState();
+      if (pwaBadge && pwaCard) {
+        if (pwaState === 'ready') {
+          pwaBadge.textContent = '수신 가능 (연동 완료)';
+          pwaBadge.className = 'channel-status active';
+          pwaCard.classList.add('active');
+        } else if (pwaState === 'blocked') {
+          pwaBadge.textContent = '알림 차단됨';
+          pwaBadge.className = 'channel-status blocked';
+          pwaCard.classList.remove('active');
+        } else if (pwaState === 'unsupported') {
+          pwaBadge.textContent = '지원 안 됨';
+          pwaBadge.className = 'channel-status unsupported';
+          pwaCard.classList.remove('active');
+        } else {
+          pwaBadge.textContent = '미설정 (알림 켜기 필요)';
+          pwaBadge.className = 'channel-status';
+          pwaCard.classList.remove('active');
+        }
+      }
+
+      if (telegramBadge && telegramCard) {
+        if (data.telegramSetup) {
+          telegramBadge.textContent = '설정 완료 (수신 중)';
+          telegramBadge.className = 'channel-status active';
+          telegramCard.classList.add('active');
+        } else {
+          telegramBadge.textContent = '미설정 (.env 파일)';
+          telegramBadge.className = 'channel-status';
+          telegramCard.classList.remove('active');
+        }
+      }
+
+      if (emailBadge && emailCard) {
+        if (data.emailSetup) {
+          emailBadge.textContent = '설정 완료 (수신 중)';
+          emailBadge.className = 'channel-status active';
+          emailCard.classList.add('active');
+        } else {
+          emailBadge.textContent = '미설정 (.env 파일)';
+          emailBadge.className = 'channel-status';
+          emailCard.classList.remove('active');
+        }
+      }
+
       // 최신 품절 해제 감지 이력 동기화
       await updateHistory();
+
+      // 알림 연동 값들 세팅 (사용자가 입력 중이 아닐 때만 동기화)
+      const tgTokenInput = document.getElementById('setup-telegram-token');
+      const tgChatIdInput = document.getElementById('setup-telegram-chatid');
+      if (tgTokenInput && document.activeElement !== tgTokenInput && data.telegramBotToken) {
+        tgTokenInput.value = data.telegramBotToken;
+      }
+      if (tgChatIdInput && document.activeElement !== tgChatIdInput && data.telegramChatId) {
+        tgChatIdInput.value = data.telegramChatId;
+      }
+
+      const smtpHostInput = document.getElementById('setup-email-host');
+      const smtpPortInput = document.getElementById('setup-email-port');
+      const smtpUserInput = document.getElementById('setup-email-user');
+      const smtpPassInput = document.getElementById('setup-email-pass');
+      const emailReceiverInput = document.getElementById('setup-email-receiver');
+
+      if (smtpHostInput && document.activeElement !== smtpHostInput) {
+        smtpHostInput.value = data.smtpHost || '';
+      }
+      if (smtpPortInput && document.activeElement !== smtpPortInput) {
+        smtpPortInput.value = data.smtpPort || '';
+      }
+      if (smtpUserInput && document.activeElement !== smtpUserInput) {
+        smtpUserInput.value = data.smtpUser || '';
+      }
+      if (smtpPassInput && document.activeElement !== smtpPassInput && data.smtpPass) {
+        smtpPassInput.value = data.smtpPass;
+      }
+      if (emailReceiverInput && document.activeElement !== emailReceiverInput) {
+        emailReceiverInput.value = data.receiverEmail || '';
+      }
 
       const currentStatus = shouldShowCurrentStatus ? data.lastStatus : 'UNKNOWN';
 
@@ -494,10 +855,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      // 인앱 토스트 팝업 제어
+      // 인앱 토스트 팝업 제어 및 소리/진동 알람
       if (currentStatus === 'AVAILABLE') {
         if (lastStatusAlerted !== 'AVAILABLE') {
           showInAppToast(data.targetUrl, data.availableOptions);
+          playAlertSound();
+          triggerVibration();
           lastStatusAlerted = 'AVAILABLE';
         }
       } else {
@@ -846,7 +1209,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (status === 'SOLD_OUT') {
       ticketStatusBadge.classList.add('soldout');
-      ticketStatusBadge.innerHTML = `${SHIBA_SOLDOUT_SVG}<span>아직 품절</span>`;
+      ticketStatusBadge.innerHTML = `<img src="sleeping_detective_shiba_2d.png" alt="아직 품절" class="shiba-badge-img"><span>아직 품절</span>`;
       heroStatusText.textContent = '아직 구매 가능한 신호가 없습니다.';
       return;
     }
@@ -854,13 +1217,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (status === 'AVAILABLE') {
       ticketStatusBadge.classList.add('available');
       const optionText = availableOptions.length > 0 ? ` · ${availableOptions.join(', ')}` : '';
-      ticketStatusBadge.innerHTML = `${SHIBA_AVAILABLE_SVG}<span>구매 가능${optionText}</span>`;
+      ticketStatusBadge.innerHTML = `<img src="happy_detective_shiba_2d.png" alt="구매 가능" class="shiba-badge-img"><span>구매 가능${optionText}</span>`;
       heroStatusText.textContent = '구매 가능 상태가 감지됐습니다.';
       return;
     }
 
     ticketStatusBadge.classList.add('unknown');
-    ticketStatusBadge.innerHTML = `<img src="thumbnail.png" alt="확인 중" class="shiba-badge-img"><span>확인하는 중</span>`;
+    ticketStatusBadge.innerHTML = `<img src="logo.png" alt="확인 중" class="shiba-badge-img"><span>확인하는 중</span>`;
     heroStatusText.textContent = '페이지 상태를 확인하는 중입니다.';
   }
 
@@ -1568,6 +1931,247 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateMockProductUI();
     setInterval(updateMockProductUI, 4000);
   }
+
+  window.toggleChannelGuide = function(guideId) {
+    const guide = document.getElementById(guideId);
+    if (guide) {
+      guide.classList.toggle('hide');
+    }
+  };
+
+  // 1. mock=true 쿼리스트링 파라미터가 있을 때만 mock-feature 요소들 노출
+  const urlParams = new URLSearchParams(window.location.search);
+  const isMockParam = urlParams.get('mock') === 'true';
+  if (isMockParam) {
+    document.querySelectorAll('.mock-feature').forEach(el => {
+      el.classList.remove('hide');
+    });
+  }
+
+  // 2. 이메일 프리셋 선택 이벤트 핸들러
+  const emailProviderSelect = document.getElementById('setup-email-provider');
+  const emailHostInput = document.getElementById('setup-email-host');
+  const emailPortInput = document.getElementById('setup-email-port');
+
+  if (emailProviderSelect && emailHostInput && emailPortInput) {
+    const applyEmailPreset = () => {
+      const provider = emailProviderSelect.value;
+      if (provider === 'naver') {
+        emailHostInput.value = 'smtp.naver.com';
+        emailPortInput.value = '587';
+        emailHostInput.readOnly = true;
+        emailPortInput.readOnly = true;
+      } else if (provider === 'gmail') {
+        emailHostInput.value = 'smtp.gmail.com';
+        emailPortInput.value = '587';
+        emailHostInput.readOnly = true;
+        emailPortInput.readOnly = true;
+      } else {
+        emailHostInput.value = '';
+        emailPortInput.value = '';
+        emailHostInput.readOnly = false;
+        emailPortInput.readOnly = false;
+      }
+    };
+    emailProviderSelect.addEventListener('change', applyEmailPreset);
+    // 최초 1회 실행하여 기본값 동기화
+    applyEmailPreset();
+  }
+
+  // 3. 텔레그램 연동 저장 버튼 이벤트 핸들러
+  const btnSaveTelegram = document.getElementById('btn-save-telegram');
+  if (btnSaveTelegram) {
+    btnSaveTelegram.addEventListener('click', async () => {
+      const token = document.getElementById('setup-telegram-token').value.trim();
+      const chatId = document.getElementById('setup-telegram-chatid').value.trim();
+
+      if (!token || !chatId) {
+        alert('토큰과 채팅방 ID를 입력해 주세요.');
+        return;
+      }
+
+      btnSaveTelegram.disabled = true;
+      const originalText = btnSaveTelegram.textContent;
+      btnSaveTelegram.textContent = '저장 중...';
+
+      try {
+        const res = await fetch('/api/settings/notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ telegramBotToken: token, telegramChatId: chatId })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '저장 실패');
+        alert('텔레그램 알림 설정이 성공적으로 저장되었습니다.');
+        updateStatus();
+      } catch (err) {
+        alert(`저장 실패: ${err.message}`);
+      } finally {
+        btnSaveTelegram.disabled = false;
+        btnSaveTelegram.textContent = originalText;
+      }
+    });
+  }
+
+  // 4. 텔레그램 테스트 발송 버튼 이벤트 핸들러
+  const btnTestTelegram = document.getElementById('btn-test-telegram');
+  if (btnTestTelegram) {
+    btnTestTelegram.addEventListener('click', async () => {
+      const token = document.getElementById('setup-telegram-token').value.trim();
+      const chatId = document.getElementById('setup-telegram-chatid').value.trim();
+
+      if (!token || !chatId) {
+        alert('테스트를 위해 토큰과 채팅방 ID를 입력해 주세요.');
+        return;
+      }
+
+      btnTestTelegram.disabled = true;
+      const originalText = btnTestTelegram.textContent;
+      btnTestTelegram.textContent = '발송 중...';
+
+      try {
+        const res = await fetch('/api/test/telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ botToken: token, chatId: chatId })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '발송 실패');
+        alert('텔레그램 테스트 메시지가 정상 발송되었습니다. 수신 여부를 확인해 주세요.');
+      } catch (err) {
+        alert(`테스트 실패: ${err.message}`);
+      } finally {
+        btnTestTelegram.disabled = false;
+        btnTestTelegram.textContent = originalText;
+      }
+    });
+  }
+
+  // 5. 이메일 연동 저장 버튼 이벤트 핸들러
+  const btnSaveEmail = document.getElementById('btn-save-email');
+  if (btnSaveEmail) {
+    btnSaveEmail.addEventListener('click', async () => {
+      const host = document.getElementById('setup-email-host').value.trim();
+      const port = document.getElementById('setup-email-port').value.trim();
+      const user = document.getElementById('setup-email-user').value.trim();
+      const pass = document.getElementById('setup-email-pass').value.trim();
+      const receiver = document.getElementById('setup-email-receiver').value.trim();
+
+      if (!host || !port || !user || !pass || !receiver) {
+        alert('모든 필수 입력 값을 입력해 주세요.');
+        return;
+      }
+
+      btnSaveEmail.disabled = true;
+      const originalText = btnSaveEmail.textContent;
+      btnSaveEmail.textContent = '저장 중...';
+
+      try {
+        const res = await fetch('/api/settings/notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            smtpHost: host,
+            smtpPort: port,
+            smtpUser: user,
+            smtpPass: pass,
+            receiverEmail: receiver
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '저장 실패');
+        alert('이메일 알림 설정이 성공적으로 저장되었습니다.');
+        updateStatus();
+      } catch (err) {
+        alert(`저장 실패: ${err.message}`);
+      } finally {
+        btnSaveEmail.disabled = false;
+        btnSaveEmail.textContent = originalText;
+      }
+    });
+  }
+
+  // 6. 이메일 테스트 발송 버튼 이벤트 핸들러
+  const btnTestEmail = document.getElementById('btn-test-email');
+  if (btnTestEmail) {
+    btnTestEmail.addEventListener('click', async () => {
+      const host = document.getElementById('setup-email-host').value.trim();
+      const port = document.getElementById('setup-email-port').value.trim();
+      const user = document.getElementById('setup-email-user').value.trim();
+      const pass = document.getElementById('setup-email-pass').value.trim();
+      const receiver = document.getElementById('setup-email-receiver').value.trim();
+
+      if (!host || !port || !user || !pass || !receiver) {
+        alert('테스트를 위해 모든 필수 입력 값을 입력해 주세요.');
+        return;
+      }
+
+      btnTestEmail.disabled = true;
+      const originalText = btnTestEmail.textContent;
+      btnTestEmail.textContent = '발송 중...';
+
+      try {
+        const res = await fetch('/api/test/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            smtpHost: host,
+            smtpPort: port,
+            smtpUser: user,
+            smtpPass: pass,
+            receiverEmail: receiver
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '발송 실패');
+        alert('이메일 테스트 메일이 정상 발송되었습니다. 수신 메일함을 확인해 주세요.');
+      } catch (err) {
+        alert(`테스트 실패: ${err.message}`);
+      } finally {
+        btnTestEmail.disabled = false;
+        btnTestEmail.textContent = originalText;
+      }
+    });
+  }
+
+  // 토스 관련 이벤트 리스너 등록
+  if (tossOnboardingAction) {
+    tossOnboardingAction.addEventListener('click', handleTossAgreement);
+  }
+  if (btnTossAgreement) {
+    btnTossAgreement.addEventListener('click', handleTossAgreement);
+  }
+  if (btnTossTest) {
+    btnTossTest.addEventListener('click', async () => {
+      const userKey = localStorage.getItem('alertWatchTossUserKey');
+      if (!userKey || isBtnLocked) return;
+
+      isBtnLocked = true;
+      btnTossTest.disabled = true;
+      const originalText = btnTossTest.textContent;
+      btnTossTest.textContent = '발송 중...';
+
+      try {
+        const res = await fetch('/api/test/toss', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userKey })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '발송 실패');
+        alert('토스 테스트 메시지가 정상 발송되었습니다.');
+      } catch (err) {
+        alert(`테스트 실패: ${err.message}`);
+      } finally {
+        isBtnLocked = false;
+        btnTossTest.disabled = false;
+        btnTossTest.textContent = originalText;
+      }
+    });
+  }
+
+  // 앱인토스 셋업 및 실행
+  setupTossEnvironment();
 
   updateStatus();
   setInterval(updateStatus, 4000);

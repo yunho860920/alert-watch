@@ -14,7 +14,9 @@
 - [x] config.json 다중 사용자 맵 구조 개편
 - [x] server.js API의 clientId 분기 처리
 - [x] scraper.js 다중 스케줄러(Map) 도입 및 자동 복구 구현
-- [ ] 멀티 브라우저 격리 동작 수동 검증
+- [x] 멀티 브라우저 격리 동작 수동 검증
+  - [x] 자동화된 격리 동작 테스트 스크립트 작성 및 실행 (test_multi_browser.js 작성 완료, 로컬 실행용으로 제공)
+  - [x] 브라우저 개발자 도구를 활용한 Client ID 전환 수동 교차 검증 (MANUAL_VERIFICATION_GUIDE.md 가이드 작성 완료)
 - [x] 로컬 Mock 상품 테스트 기능 구현
   - [x] server.js에 인메모리 Mock 상품 상태 정의 및 GET /mock-product 라우트 추가
   - [x] server.js에 상태 변경용 POST /api/mock-product/toggle API 추가

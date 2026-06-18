@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Thumbnail Resizer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: #222;
+      color: #fff;
+      font-family: 'Noto Sans KR', sans-serif;
+      text-align: center;
+      padding: 50px;
+    }
+    canvas {
+      border: 2px solid #fff;
+      background-color: #fff;
+      max-width: 90%;
+      height: auto;
+      margin-top: 20px;
+    }
+    #status {
+      font-size: 1.5rem;
+      margin-top: 20px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Toss Thumbnail Generator & Resizer</h1>
+  <p>자동으로 이미지를 리사이징하고 문구를 렌더링한 후 서버로 전송합니다.</p>
+  <div id="status">처리 중...</div>
+  <canvas id="canvas" width="1932" height="828"></canvas>
+
+  <script>
+    window.onload = async function() {
+      // 폰트가 로드될 때까지 약간 대기
+      await document.fonts.ready;
+
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const statusDiv = document.getElementById('status');
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = '/api/temp-thumbnail';
+
+      img.onload = function() {
+        try {
+          // 1. 배경 색상 샘플링 (10, 10 위치)
+          const tempCanvas = document.createElement('canvas');
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCanvas.width = 1;
+          tempCanvas.height = 1;
+          tempCtx.drawImage(img, 10, 10, 1, 1, 0, 0, 1, 1);
+          const pixel = tempCtx.getImageData(0, 0, 1, 1).data;
+          const bgCol = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+          console.log('Sampled Background Color:', bgCol);
+
+          // 2. 1932x828 캔버스 배경 채우기
+          ctx.fillStyle = bgCol;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          // 3. 강아지 탐지견 부분 그리기
+          // 원본 1024x1024에서 강아지와 흔적이 있는 좌측 영역을 크롭하여 비율 유지해서 그리기
+          const sx = 0;
+          const sy = 0;
+          const sw = 550; // 원본에서 강아지와 돋보기 영역
+          const sh = 1024;
+          
+          const scale = canvas.height / sh; // 828 / 1024
+          const dw = sw * scale;
+          const dh = canvas.height;
+          const dx = 100; // 왼쪽 마진
+          const dy = 0;
+
+          ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+
+          // 4. 우측 텍스트 렌더링 (영어 및 브랜드명 제외 한국어 전용 문구)
+          ctx.fillStyle = '#3d2f23'; // 매칭 브라운 색상
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+
+          // 타이틀 렌더링
+          ctx.font = 'bold 62px "Noto Sans KR"';
+          const titleX = dx + dw + 80;
+          const centerY = canvas.height / 2;
+          ctx.fillText('원하는 상품 품절? 컹컹이가 감시할게요! 🐶', titleX, centerY - 50);
+
+          // 서브타이틀 렌더링
+          ctx.fillStyle = '#6e5a4a'; // 조금 연한 브라운
+          ctx.font = '500 34px "Noto Sans KR"';
+          ctx.fillText('지겨운 새로고침 끝! 실시간 24시간 재입고 알림', titleX, centerY + 50);
+
+          // 5. 서버에 POST로 저장
+          const imgData = canvas.toDataURL('image/png');
+          fetch('/api/save-thumbnail', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ imgData })
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              statusDiv.innerText = '성공! 1932x828px PNG 파일이 public/thumbnail.png에 저장되었습니다.';
+              statusDiv.style.color = '#56d364';
+            } else {
+              statusDiv.innerText = '저장 실패';
+              statusDiv.style.color = '#f85149';
+            }
+          })
+          .catch(err => {
+            statusDiv.innerText = '네트워크 에러: ' + err.message;
+            statusDiv.style.color = '#f85149';
+          });
+
+        } catch (e) {
+          statusDiv.innerText = '에러 발생: ' + e.message;
+          statusDiv.style.color = '#f85149';
+          console.error(e);
+        }
+      };
+
+      img.onerror = function() {
+        statusDiv.innerText = '원본 이미지 로딩 실패';
+        statusDiv.style.color = '#f85149';
+      };
+    };
+  </script>
+</body>
+</html>

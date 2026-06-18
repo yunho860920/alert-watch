@@ -1,0 +1,14 @@
+{
+  "client_3dlloy38pee_1781193250541": [
+    {
+      "id": 1781585269517,
+      "timestamp": "2026-06-16T04:47:49.517Z",
+      "formattedTime": "2026. 6. 16. 오후 1:47:49",
+      "targetUrl": "http://localhost:3000/mock-product",
+      "detectedOptions": [
+        "블랙 M (구매가능)",
+        "화이트 L (구매가능)"
+      ]
+    }
+  ]
+}

@@ -25,6 +25,23 @@ let mockProductState = {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+function maskValue(val, visibleLength = 4) {
+  if (!val) return '';
+  const str = String(val).trim();
+  if (str.length <= visibleLength) {
+    return '*'.repeat(str.length);
+  }
+  return str.slice(0, visibleLength) + '*'.repeat(str.length - visibleLength);
+}
+
+function getUpdatedValue(newValue, oldValue) {
+  const input = newValue ? String(newValue).trim() : '';
+  if (!input || input.includes('***')) {
+    return oldValue || '';
+  }
+  return input;
+}
+
 function isLikelyCssSelector(value) {
   const input = value ? value.trim() : '';
   if (!input) {
@@ -211,6 +228,31 @@ app.get('/api/health', (req, res) => {
 // 3. 현재 상태 및 설정 통합 조회 API
 app.get('/api/status', (req, res) => {
   const { clientId, currentEndpoint } = req.query;
+
+  // 에셋 동적 동기화 우회 처리
+  const srcSleeping = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\6e7e13dd-8dd0-4fc3-9005-80bb3d3c8fbf\\sleeping_detective_shiba_2d_1781627118802.png";
+  const destSleeping = path.join(__dirname, 'public', 'sleeping_detective_shiba_2d.png');
+  const srcHappy = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\6e7e13dd-8dd0-4fc3-9005-80bb3d3c8fbf\\happy_detective_shiba_2d_1781627135838.png";
+  const destHappy = path.join(__dirname, 'public', 'happy_detective_shiba_2d.png');
+  const srcThumbnail = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\e4d8cf32-acc9-4f10-91f5-a9962b383182\\thumbnail_1781675218084.png";
+  const destThumbnail = path.join(__dirname, 'public', 'thumbnail.png');
+  try {
+    if (fs.existsSync(srcSleeping) && !fs.existsSync(destSleeping)) {
+      fs.copyFileSync(srcSleeping, destSleeping);
+      console.log('[에셋 동적 동기화] sleeping_detective_shiba_2d.png 복사 성공');
+    }
+    if (fs.existsSync(srcHappy) && !fs.existsSync(destHappy)) {
+      fs.copyFileSync(srcHappy, destHappy);
+      console.log('[에셋 동적 동기화] happy_detective_shiba_2d.png 복사 성공');
+    }
+    if (fs.existsSync(srcThumbnail)) {
+      fs.copyFileSync(srcThumbnail, destThumbnail);
+      console.log('[에셋 동적 동기화] thumbnail.png 복사 성공');
+    }
+  } catch (e) {
+    console.error('[에셋 동적 동기화 실패] 에러:', e.message);
+  }
+
   if (!clientId) {
     return res.status(400).json({ error: 'clientId가 누락되었습니다.' });
   }
@@ -240,7 +282,18 @@ app.get('/api/status', (req, res) => {
     alertRepeatCount: config.alertRepeatCount || 1,
     alertRepeatIntervalSeconds: config.alertRepeatIntervalSeconds || 30,
     registeredDevicesCount: subscriptions.length,
-    registeredDevices: getRegisteredDevices(subscriptions, currentEndpoint || '')
+    registeredDevices: getRegisteredDevices(subscriptions, currentEndpoint || ''),
+    tossUserKeysCount: (config.tossUserKeys || []).length,
+    tossUserKeys: config.tossUserKeys || [],
+    telegramSetup: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+    telegramBotToken: maskValue(process.env.TELEGRAM_BOT_TOKEN, 6),
+    telegramChatId: maskValue(process.env.TELEGRAM_CHAT_ID, 4),
+    emailSetup: Boolean(process.env.SMTP_HOST && process.env.RECEIVER_EMAIL && process.env.SMTP_USER && process.env.SMTP_PASS),
+    smtpHost: process.env.SMTP_HOST || '',
+    smtpPort: process.env.SMTP_PORT || '',
+    smtpUser: process.env.SMTP_USER || '',
+    smtpPass: maskValue(process.env.SMTP_PASS, 2),
+    receiverEmail: process.env.RECEIVER_EMAIL || ''
   });
 });
 
@@ -272,6 +325,7 @@ app.post('/api/settings', (req, res) => {
     alertRepeatCount: parseInt(alertRepeatCount, 10) || 1,
     alertRepeatIntervalSeconds: parseInt(alertRepeatIntervalSeconds, 10) || 30,
     subscriptions: existingConfig.subscriptions || [],
+    tossUserKeys: existingConfig.tossUserKeys || [],
     isMonitoring: true
   };
 
@@ -303,6 +357,243 @@ app.post('/api/settings', (req, res) => {
   scraper.startMonitoring(clientId);
 
   res.json({ message: '모니터링 설정 및 기기 구독이 성공적으로 완료되었습니다.', status: scraper.getStatusData(clientId) });
+});
+
+// 4.1. 토스 사용자 알림 등록 API
+app.post('/api/toss/register', (req, res) => {
+  const { clientId, userKey } = req.body;
+  if (!clientId || !userKey) {
+    return res.status(400).json({ error: 'clientId와 userKey가 누락되었습니다.' });
+  }
+
+  const configPath = path.join(__dirname, 'config.json');
+  let configs = {};
+
+  if (fs.existsSync(configPath)) {
+    try {
+      configs = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (e) {
+      console.error('[토스 등록] config.json 로딩 실패.', e.message);
+    }
+  }
+
+  const config = configs[clientId] || {
+    targetUrl: '',
+    keyword: '품절',
+    cssSelector: '',
+    condition: 'disappear',
+    intervalSeconds: 30,
+    alertRepeatCount: 1,
+    alertRepeatIntervalSeconds: 30,
+    subscriptions: [],
+    tossUserKeys: [],
+    isMonitoring: false
+  };
+
+  if (!config.tossUserKeys) {
+    config.tossUserKeys = [];
+  }
+
+  if (!config.tossUserKeys.includes(userKey)) {
+    config.tossUserKeys.push(userKey);
+    console.log(`[토스 등록 성공] [${clientId}] 새 토스 userKey가 연동되었습니다: ${userKey}`);
+  }
+
+  configs[clientId] = config;
+
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(configs, null, 2), 'utf8');
+    res.json({ message: '토스 알림 연동이 완료되었습니다.', tossUserKeysCount: config.tossUserKeys.length });
+  } catch (e) {
+    res.status(500).json({ error: '설정 저장 중 에러가 발생했습니다.' });
+  }
+});
+
+// 4.2. 토스 사용자 알림 해제 API
+app.post('/api/toss/unregister', (req, res) => {
+  const { clientId, userKey } = req.body;
+  if (!clientId || !userKey) {
+    return res.status(400).json({ error: 'clientId와 userKey가 누락되었습니다.' });
+  }
+
+  const configPath = path.join(__dirname, 'config.json');
+  let configs = {};
+
+  if (fs.existsSync(configPath)) {
+    try {
+      configs = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (e) {
+      console.error('[토스 해제] config.json 로딩 실패.', e.message);
+    }
+  }
+
+  const config = configs[clientId];
+  if (config && config.tossUserKeys) {
+    config.tossUserKeys = config.tossUserKeys.filter(key => key !== userKey);
+    configs[clientId] = config;
+
+    try {
+      fs.writeFileSync(configPath, JSON.stringify(configs, null, 2), 'utf8');
+      console.log(`[토스 해제 성공] [${clientId}] 토스 userKey가 제거되었습니다: ${userKey}`);
+      return res.json({ message: '토스 알림 연동이 해제되었습니다.', tossUserKeysCount: config.tossUserKeys.length });
+    } catch (e) {
+      return res.status(500).json({ error: '설정 저장 중 에러가 발생했습니다.' });
+    }
+  }
+  
+  res.status(404).json({ error: '등록된 토스 알림 정보를 찾을 수 없습니다.' });
+});
+
+function updateEnvFile(updates) {
+  const envPath = path.join(__dirname, '.env');
+  let content = '';
+  if (fs.existsSync(envPath)) {
+    content = fs.readFileSync(envPath, 'utf8');
+  }
+
+  let lines = content.split(/\r?\n/);
+  const keysToUpdate = { ...updates };
+
+  lines = lines.map(line => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+      const parts = trimmed.split('=');
+      const key = parts[0].trim();
+      if (keysToUpdate[key] !== undefined) {
+        const val = keysToUpdate[key];
+        delete keysToUpdate[key];
+        return `${key}=${val}`;
+      }
+    }
+    return line;
+  });
+
+  Object.keys(keysToUpdate).forEach(key => {
+    const val = keysToUpdate[key];
+    lines.push(`${key}=${val}`);
+  });
+
+  fs.writeFileSync(envPath, lines.join('\n'), 'utf8');
+
+  Object.keys(updates).forEach(key => {
+    process.env[key] = updates[key];
+  });
+}
+
+// 4.5. 알림 설정(텔레그램, 이메일 SMTP) 변경 API
+app.post('/api/settings/notifications', (req, res) => {
+  const { 
+    telegramBotToken, 
+    telegramChatId, 
+    smtpHost, 
+    smtpPort, 
+    smtpUser, 
+    smtpPass, 
+    receiverEmail 
+  } = req.body;
+
+  const updates = {};
+
+  if (telegramBotToken !== undefined) {
+    updates['TELEGRAM_BOT_TOKEN'] = getUpdatedValue(telegramBotToken, process.env.TELEGRAM_BOT_TOKEN);
+  }
+  if (telegramChatId !== undefined) {
+    updates['TELEGRAM_CHAT_ID'] = getUpdatedValue(telegramChatId, process.env.TELEGRAM_CHAT_ID);
+  }
+  if (smtpHost !== undefined) {
+    updates['SMTP_HOST'] = smtpHost.trim();
+  }
+  if (smtpPort !== undefined) {
+    updates['SMTP_PORT'] = smtpPort.trim();
+  }
+  if (smtpUser !== undefined) {
+    updates['SMTP_USER'] = smtpUser.trim();
+  }
+  if (smtpPass !== undefined) {
+    updates['SMTP_PASS'] = getUpdatedValue(smtpPass, process.env.SMTP_PASS);
+  }
+  if (receiverEmail !== undefined) {
+    updates['RECEIVER_EMAIL'] = receiverEmail.trim();
+  }
+
+  try {
+    updateEnvFile(updates);
+    console.log('[설정 변경] 알림 채널 구성(.env)이 정상적으로 갱신되었습니다.');
+    res.json({ 
+      message: '알림 연동 설정이 성공적으로 저장되었습니다.',
+      telegramSetup: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+      emailSetup: Boolean(process.env.SMTP_HOST && process.env.RECEIVER_EMAIL && process.env.SMTP_USER && process.env.SMTP_PASS)
+    });
+  } catch (error) {
+    console.error('[설정 변경 실패]', error.message);
+    res.status(500).json({ error: '알림 설정을 저장하는 중 에러가 발생했습니다.' });
+  }
+});
+
+// 4.6. 텔레그램 알림 즉시 테스트 API
+app.post('/api/test/telegram', async (req, res) => {
+  const { botToken, chatId } = req.body;
+  const finalToken = getUpdatedValue(botToken, process.env.TELEGRAM_BOT_TOKEN);
+  const finalChatId = getUpdatedValue(chatId, process.env.TELEGRAM_CHAT_ID);
+
+  if (!finalToken || !finalChatId) {
+    return res.status(400).json({ error: '텔레그램 봇 토큰과 챗 ID를 모두 입력해 주세요.' });
+  }
+
+  try {
+    const url = `https://api.telegram.org/bot${finalToken}/sendMessage`;
+    await axios.post(url, {
+      chat_id: finalChatId,
+      text: '🤖 [Alert Watch] 텔레그램 알림 연동 테스트에 성공했습니다!'
+    });
+    res.json({ message: '텔레그램 테스트 메시지가 성공적으로 발송되었습니다.' });
+  } catch (error) {
+    let errMsg = error.message;
+    if (error.response && error.response.data && error.response.data.description) {
+      errMsg = error.response.data.description;
+    }
+    res.status(500).json({ error: `텔레그램 발송 실패: ${errMsg}` });
+  }
+});
+
+// 4.7. 이메일 알림 즉시 테스트 API
+app.post('/api/test/email', async (req, res) => {
+  const { smtpHost, smtpPort, smtpUser, smtpPass, receiverEmail } = req.body;
+  const finalHost = smtpHost || process.env.SMTP_HOST;
+  const finalPort = parseInt(smtpPort, 10) || parseInt(process.env.SMTP_PORT, 10) || 587;
+  const finalUser = smtpUser || process.env.SMTP_USER;
+  const finalPass = getUpdatedValue(smtpPass, process.env.SMTP_PASS);
+  const finalReceiver = receiverEmail || process.env.RECEIVER_EMAIL;
+
+  if (!finalHost || !finalUser || !finalPass || !finalReceiver) {
+    return res.status(400).json({ error: '필수 이메일 SMTP 정보(호스트, 계정, 패스워드, 수신자 메일)가 누락되었습니다.' });
+  }
+
+  try {
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      host: finalHost,
+      port: finalPort,
+      secure: finalPort === 465,
+      auth: {
+        user: finalUser,
+        pass: finalPass
+      },
+      timeout: 10000
+    });
+
+    await transporter.sendMail({
+      from: `"Alert Watch" <${finalUser}>`,
+      to: finalReceiver,
+      subject: '📬 [Alert Watch] 이메일 연동 테스트 메일',
+      text: '본 메일은 Alert Watch 이메일 알림 연동이 성공적으로 설정되었음을 알리는 테스트 메일입니다.',
+      html: '<p>본 메일은 <strong>Alert Watch</strong> 이메일 알림 연동이 성공적으로 설정되었음을 알리는 테스트 메일입니다.</p>'
+    });
+
+    res.json({ message: '이메일 테스트 발송에 성공했습니다.' });
+  } catch (error) {
+    res.status(500).json({ error: `이메일 발송 실패: ${error.message}` });
+  }
 });
 
 // 4-1. 등록된 브라우저 알림 대상 제거 API
@@ -489,6 +780,49 @@ app.post('/api/history/clear', (req, res) => {
     res.status(500).json({ error: '이력 초기화 중 에러가 발생했습니다.' });
   }
 });
+
+// 7.7. 토스 알림 즉시 테스트 API
+app.post('/api/test/toss', async (req, res) => {
+  const { userKey } = req.body;
+  if (!userKey) {
+    return res.status(400).json({ error: '테스트용 토스 userKey가 누락되었습니다.' });
+  }
+
+  try {
+    const notifier = require('./notifier');
+    const success = await notifier.sendTossMessage(userKey, process.env.TOSS_TEMPLATE_SET_CODE, {
+      productName: 'Mock 테스트 상품',
+      url: 'http://localhost:3000/mock-product'
+    });
+
+    if (success) {
+      res.json({ message: '토스 테스트 메시지가 정상적으로 요청되었습니다.' });
+    } else {
+      res.status(500).json({ error: '토스 메시지 발송 요청에 실패했습니다.' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// 에셋 리사이징 및 저장용 임시 API
+app.get('/api/temp-thumbnail', (req, res) => {
+  res.sendFile("C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\e4d8cf32-acc9-4f10-91f5-a9962b383182\\thumbnail_1781675218084.png");
+});
+
+app.post('/api/save-thumbnail', (req, res) => {
+  const { imgData } = req.body;
+  if (!imgData) {
+    return res.status(400).json({ error: 'imgData가 누락되었습니다.' });
+  }
+  const base64Data = imgData.replace(/^data:image\/png;base64,/, "");
+  const destPath = path.join(__dirname, 'public', 'thumbnail.png');
+  fs.writeFileSync(destPath, base64Data, 'base64');
+  console.log('[API] 리사이즈된 thumbnail.png가 public/ 폴더에 저장되었습니다.');
+  res.json({ success: true });
+});
+
 
 // 8. 감시 대상 사이트의 1회 자가 진단 API (지능형 자동 탐지 고도화)
 app.post('/api/check-site', async (req, res) => {

@@ -78,6 +78,21 @@
               <span>알림 켜기</span>
             </button>
           </div>
+
+          <!-- Apps in Toss 전용 알림 온보딩 배너 -->
+          <div id="toss-onboarding-banner" class="push-onboarding-banner warning hide" role="status">
+            <div class="push-onboarding-icon" aria-hidden="true" style="color: #0064ff;">
+              <i class="fa-solid fa-square-envelope"></i>
+            </div>
+            <div class="push-onboarding-copy">
+              <strong id="toss-onboarding-title">토스 알림을 아직 받지 않습니다.</strong>
+              <span id="toss-onboarding-detail">품절 해제 시 토스 앱 알림을 받으시려면 수신 동의를 활성화해 주세요.</span>
+            </div>
+            <button id="toss-onboarding-action" class="banner-action" type="button" style="background-color: #0064ff;">
+              <i class="fa-solid fa-link"></i>
+              <span>토스 알림 연동</span>
+            </button>
+          </div>
           <div class="status-widget">
             <span class="widget-title">현재 판매 상태</span>
             
@@ -133,6 +148,14 @@
             <div id="registered-device-list" class="registered-device-list">
               <div class="registered-device-empty">아직 등록된 알림 대상이 없습니다.</div>
             </div>
+            
+            <!-- 토스 연동 사용자 목록 (toss 모드 전용) -->
+            <div id="toss-user-panel" class="toss-user-list hide" style="margin-top: 15px; border-top: 1px dashed var(--border-dark); padding-top: 15px;">
+              <strong style="font-size: 0.9rem; color: var(--text-muted); display: block; margin-bottom: 8px;">연동된 토스 사용자 계정</strong>
+              <div id="toss-user-list" class="registered-device-list">
+                <div style="font-size: 0.85rem; color: var(--text-muted); padding: 10px 0;">연동된 토스 계정이 없습니다.</div>
+              </div>
+            </div>
           </div>
 
           <!-- Start / Stop Control -->
@@ -154,7 +177,7 @@
               <div class="input-field-group full-width">
                 <label for="settings-url">상품 페이지 주소 (URL)</label>
                 <input type="url" id="settings-url" placeholder="https://구매하고싶은상품주소.com" required>
-                <small style="margin-top: 6px; display: block; color: var(--text-muted);">
+                <small class="mock-feature hide" style="margin-top: 6px; display: block; color: var(--text-muted);">
                   품절 여부 가상 테스트를 진행하려면 로컬 Mock 상품 페이지를 이용하세요. 
                   <a href="/mock-product" target="_blank" style="color: var(--mint); text-decoration: underline; font-weight: bold;">[Mock 상품 페이지 열기]</a>
                 </small>
@@ -211,6 +234,162 @@
               </div>
             </section>
 
+            <section class="settings-group" aria-labelledby="notification-channels-title">
+              <div class="settings-group-header">
+                <h3 id="notification-channels-title">알림 수신 채널 설정</h3>
+                <p>재입고 발생 시 실시간으로 알림을 전달받을 경로와 연동 방법입니다.</p>
+              </div>
+
+              <div class="notification-channels-grid">
+                <!-- 1. PWA (기기 푸시) -->
+                <div class="channel-card" id="channel-pwa">
+                  <div class="channel-card-header">
+                    <div class="channel-icon">
+                      <i class="fa-solid fa-mobile-screen-button"></i>
+                    </div>
+                    <div class="channel-info">
+                      <h4>1. PWA (기기 푸시 알림)</h4>
+                      <span class="channel-status" id="pwa-status-badge">확인하는 중</span>
+                    </div>
+                  </div>
+                  <p class="channel-desc">현재 기기 브라우저나 설치형 웹 앱(PWA)을 통해 바탕화면 팝업 알림을 수신합니다.</p>
+                  <button class="channel-btn" onclick="toggleChannelGuide('guide-pwa')" type="button">사용 방법 보기</button>
+                  <div class="channel-guide-content hide" id="guide-pwa">
+                    <strong>PWA 알림 수신 방법:</strong>
+                    <ul>
+                      <li><strong>iOS (아이폰 16.4+):</strong> 반드시 <strong>Safari</strong> 브라우저로 접속 ➡️ 공유 버튼 ➡️ <strong>[홈 화면에 추가]</strong>로 설치한 뒤, 홈 화면 앱으로 실행하여 <strong>[알림 켜기]</strong>를 등록해야 팝업이 활성화됩니다. (인앱/크롬 제한 있음)</li>
+                      <li><strong>Android / PC:</strong> 크롬/사파리 브라우저에서 '이력 & 알림' 탭의 <strong>[알림 켜기]</strong>를 등록하면 즉시 수신 가능합니다.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <!-- 2. Telegram (텔레그램) -->
+                <div class="channel-card" id="channel-telegram">
+                  <div class="channel-card-header">
+                    <div class="channel-icon">
+                      <i class="fa-brands fa-telegram"></i>
+                    </div>
+                    <div class="channel-info">
+                      <h4>2. 텔레그램 메시지 알림</h4>
+                      <span class="channel-status" id="telegram-status-badge">확인하는 중</span>
+                    </div>
+                  </div>
+                  <p class="channel-desc">서버와 텔레그램 봇을 연동하여 기기 종류와 앱 환경 제한 없이 실시간 메시지로 전달받습니다.</p>
+                  
+                  <div class="channel-setup-form">
+                    <div class="input-field-group">
+                      <label for="setup-telegram-token">봇 토큰 (Bot Token)</label>
+                      <input type="text" id="setup-telegram-token" placeholder="BotFather에게 받은 토큰 입력">
+                    </div>
+                    <div class="input-field-group">
+                      <label for="setup-telegram-chatid">채팅방 ID (Chat ID)</label>
+                      <input type="text" id="setup-telegram-chatid" placeholder="본인의 텔레그램 Chat ID 입력">
+                    </div>
+                    <div class="channel-form-actions">
+                      <button class="channel-btn btn-save" id="btn-save-telegram" type="button">연동 저장</button>
+                      <button class="channel-btn btn-test" id="btn-test-telegram" type="button">테스트 발송</button>
+                    </div>
+                  </div>
+
+                  <button class="channel-btn-guide-toggle" onclick="toggleChannelGuide('guide-telegram')" type="button">연동 방법 보기 <i class="fa-solid fa-chevron-down"></i></button>
+                  <div class="channel-guide-content hide" id="guide-telegram">
+                    <strong>텔레그램 봇 연동 방법:</strong>
+                    <ol>
+                      <li>텔레그램 검색창에 <a href="https://t.me/BotFather" target="_blank">@BotFather</a>를 검색하여 대화방을 엽니다.</li>
+                      <li><code>/newbot</code>을 입력한 뒤 가이드에 따라 봇 이름과 Username을 지정하여 <strong>HTTP API Token</strong>을 발급받습니다.</li>
+                      <li>생성한 내 봇과의 대화방에 들어가서 <code>/start</code> 및 아무 메시지나 보냅니다.</li>
+                      <li><a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> 또는 ID 조회 봇을 검색하여 본인의 <strong>채팅방 ID (Chat ID)</strong>를 알아냅니다.</li>
+                    </ol>
+                  </div>
+                </div>
+
+                <!-- 3. Email (이메일) -->
+                <div class="channel-card" id="channel-email">
+                  <div class="channel-card-header">
+                    <div class="channel-icon">
+                      <i class="fa-solid fa-envelope"></i>
+                    </div>
+                    <div class="channel-info">
+                      <h4>3. 이메일 알림</h4>
+                      <span class="channel-status" id="email-status-badge">확인하는 중</span>
+                    </div>
+                  </div>
+                  <p class="channel-desc">SMTP 메일 서버와 연동하여 지정해 둔 수신용 메일 주소로 즉시 알림 메일을 발송합니다.</p>
+                  
+                  <div class="channel-setup-form">
+                    <div class="input-field-group">
+                      <label for="setup-email-provider">이메일 서비스 프리셋</label>
+                      <select id="setup-email-provider">
+                        <option value="naver">네이버 메일 (Naver)</option>
+                        <option value="gmail">구글 지메일 (Gmail)</option>
+                        <option value="custom">직접 입력 (Custom SMTP)</option>
+                      </select>
+                    </div>
+                    <div class="form-row-2">
+                      <div class="input-field-group">
+                        <label for="setup-email-host">SMTP 서버 주소</label>
+                        <input type="text" id="setup-email-host" placeholder="smtp.naver.com" value="smtp.naver.com">
+                      </div>
+                      <div class="input-field-group">
+                        <label for="setup-email-port">SMTP 포트 번호</label>
+                        <input type="text" id="setup-email-port" placeholder="587" value="587">
+                      </div>
+                    </div>
+                    <div class="input-field-group">
+                      <label for="setup-email-user">발신 메일 주소 (ID)</label>
+                      <input type="email" id="setup-email-user" placeholder="example@naver.com">
+                    </div>
+                    <div class="input-field-group">
+                      <label for="setup-email-pass">앱 비밀번호 (앱 암호)</label>
+                      <input type="password" id="setup-email-pass" placeholder="2단계 인증에서 발급받은 비밀번호">
+                    </div>
+                    <div class="input-field-group">
+                      <label for="setup-email-receiver">수신 메일 주소</label>
+                      <input type="email" id="setup-email-receiver" placeholder="알림을 수신할 메일 주소">
+                    </div>
+                    <div class="channel-form-actions">
+                      <button class="channel-btn btn-save" id="btn-save-email" type="button">연동 저장</button>
+                      <button class="channel-btn btn-test" id="btn-test-email" type="button">테스트 발송</button>
+                    </div>
+                  </div>
+
+                  <button class="channel-btn-guide-toggle" onclick="toggleChannelGuide('guide-email')" type="button">연동 방법 보기 <i class="fa-solid fa-chevron-down"></i></button>
+                  <div class="channel-guide-content hide" id="guide-email">
+                    <strong>이메일 SMTP 연동 방법:</strong>
+                    <ol>
+                      <li>네이버/구글 등 이용하시는 메일의 환경설정에서 <strong>SMTP 사용 설정</strong>을 켜고 <strong>앱 비밀번호 (2단계 인증용)</strong>를 생성합니다.</li>
+                      <li>발신 메일 주소로 연동할 포털 사이트 메일 주소를 입력하고, 해당 사이트에서 발급받은 16자리 앱 암호를 '앱 비밀번호'에 입력해야 연동에 실패하지 않습니다.</li>
+                    </ol>
+                  </div>
+                </div>
+
+                <!-- 4. Apps in Toss (토스 알림) -->
+                <div class="channel-card hide" id="channel-toss">
+                  <div class="channel-card-header">
+                    <div class="channel-icon" style="background: rgba(0, 100, 255, 0.15); color: #0064ff;">
+                      <i class="fa-solid fa-square-envelope"></i>
+                    </div>
+                    <div class="channel-info">
+                      <h4>4. 앱인토스 알림 (Toss Push)</h4>
+                      <span class="channel-status" id="toss-status-badge">미확인</span>
+                    </div>
+                  </div>
+                  <p class="channel-desc">토스 미니앱의 알림 수신 동의를 활성화하여 토스 앱 푸시 및 알림톡으로 알림을 수신합니다.</p>
+                  
+                  <div class="channel-setup-form" style="display: block;">
+                    <div class="input-field-group">
+                      <label for="setup-toss-userkey">토스 사용자 연동 키</label>
+                      <input type="text" id="setup-toss-userkey" readonly placeholder="연동 시 자동 생성됨">
+                    </div>
+                    <div class="channel-form-actions">
+                      <button class="channel-btn btn-save" id="btn-toss-agreement" type="button" style="background-color: #0064ff; border-color: #0064ff;">수신 동의 요청</button>
+                      <button class="channel-btn btn-test" id="btn-toss-test" type="button" disabled>테스트 발송</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             <details class="advanced-settings">
               <summary>
                 <i class="fa-solid fa-sliders"></i>
@@ -247,7 +426,7 @@
           </form>
 
           <!-- Local Test Simulator Panel -->
-          <section class="test-simulator-card" aria-labelledby="simulator-title">
+          <section id="mock-simulator-card" class="test-simulator-card mock-feature hide" aria-labelledby="simulator-title">
             <div class="simulator-header">
               <h3 id="simulator-title">
                 <i class="fa-solid fa-flask" style="color: var(--mint);"></i>
@@ -305,9 +484,9 @@
             </summary>
             <div class="guide-details">
               <ul>
-                <li><strong>품절 감지 테스트 (가상 상품):</strong> 외부 사이트 품절 상태를 제어할 수 없는 경우, 로컬 가상 상품 페이지를 URL로 등록하여 테스트할 수 있습니다. <a href="/mock-product" target="_blank" style="color: var(--mint); text-decoration: underline; font-weight: bold;">[Mock 상품 페이지 열기]</a></li>
-                <li><strong>백그라운드 지속 감시:</strong> 모니터링 엔진은 브라우저를 닫아도 백엔드 서버에서 24시간 작동하며 상태 변화 시 웹 푸시로 알려드립니다.</li>
-                <li><strong>알림 대상 등록:</strong> 현황 화면의 <strong>[알림 켜기]</strong> 또는 <strong>'이력 & 알림'</strong> 메뉴에서 현재 브라우저를 알림 대상으로 등록하면 실시간 푸시를 받을 수 있습니다.</li>
+                <li class="mock-feature hide"><strong>품절 감지 테스트 (가상 상품):</strong> 외부 사이트 품절 상태를 제어할 수 없는 경우, 로컬 가상 상품 페이지를 URL로 등록하여 테스트할 수 있습니다. <a href="/mock-product" target="_blank" style="color: var(--mint); text-decoration: underline; font-weight: bold;">[Mock 상품 페이지 열기]</a></li>
+                <li><strong>백그라운드 지속 감시:</strong> 모니터링 엔진은 브라우저를 닫아도 백엔드 서버에서 24시간 작동하며 상태 변화 시 채널(PWA, 텔레그램, 메일)로 즉시 전송합니다.</li>
+                <li><strong>알림 대상 등록:</strong> 현황 화면의 <strong>[알림 켜기]</strong> 또는 <strong>'이력 & 알림'</strong> 메뉴에서 현재 브라우저를 알림 대상으로 등록하면 실시간 PWA 푸시를 받을 수 있습니다.</li>
                 <li><strong>Render 서버 절전 문제:</strong> 무료 Render 호스팅 사용 시 15분 접속이 없으면 서버가 절전 상태로 돌입합니다. 24시간 감시를 이어가려면 <strong>UptimeRobot</strong> 서비스에 가입하신 후, 이 서버의 헬스체크 주소(<code>/api/health</code>)를 5분 주기로 찌르도록 등록해 두세요.</li>
               </ul>
             </div>

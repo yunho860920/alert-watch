@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "copy-assets": "node copy_assets.js"
+    "copy-assets": "node copy_assets.js",
+    "copy-shiba": "node scratch/copy_shiba.js"
   },
   "dependencies": {
     "axios": "^1.7.2",

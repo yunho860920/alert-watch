@@ -355,7 +355,7 @@ async function checkCancellation(clientId) {
 
     // 품절 -> 구입 가능 상태 변화 트리거
     if (currentStatus === 'AVAILABLE' && state.lastStatus === 'SOLD_OUT') {
-      console.log(`[알림 트리거] [${clientId}] 구입 가능 조건 충족! 웹 푸시 전송을 개시합니다.`);
+      console.log(`[알림 트리거] [${clientId}] 구입 가능 조건 충족! 웹 푸시 및 토스 스마트 발송 전송을 개시합니다.`);
       
       // 품절 해제 감지 이력을 영구 보관용 파일에 저장
       saveHistory(clientId, activeAvailableOptions);
@@ -378,15 +378,50 @@ async function checkCancellation(clientId) {
         state.repeatAlertTimer = null;
       }
 
+      // 알림 전송 래퍼 함수 (1회차 및 반복 알림 공통 적용)
+      const triggerAllAlertChannels = async () => {
+        // A. PWA 웹 푸시 발송
+        await sendWebPushNotification(clientId, title, body, url);
+
+        // B. 앱인토스 스마트 발송
+        if (config.tossUserKeys && config.tossUserKeys.length > 0) {
+          try {
+            const notifier = require('./notifier');
+            const context = {
+              productName: config.keyword || '감시 상품',
+              url: url
+            };
+            for (const userKey of config.tossUserKeys) {
+              await notifier.sendTossMessage(userKey, config.templateSetCode, context);
+            }
+          } catch (tossErr) {
+            console.error('[토스 발송 에러] 토스 메시지 발송 실패:', tossErr.message);
+          }
+        }
+
+        // C. 이메일 및 텔레그램 알림 발송 연동
+        try {
+          const notifier = require('./notifier');
+          const textMsg = `[품절 탐지견 컹컹!] 구입 가능 알림\n\n${body}`;
+          const htmlMsg = `<p><strong>[품절 탐지견 컹컹!]</strong> 감시하던 상품의 구입 가능 상태가 감지되었습니다.</p>
+                           <p>${body.replace(/\n/g, '<br>')}</p>
+                           <p><a href="${url}" target="_blank">즉시 구매하러 이동</a></p>`;
+          notifier.sendTelegram(textMsg);
+          notifier.sendEmail(title, textMsg, htmlMsg);
+        } catch (notifierErr) {
+          console.error('[알림 연동 에러] 이메일/텔레그램 발송 실패:', notifierErr.message);
+        }
+      };
+
       // 1회차 즉시 발송
-      await sendWebPushNotification(clientId, title, body, url);
+      await triggerAllAlertChannels();
       console.log(`[반복 알림] [${clientId}] 1/${repeatCount}회 발송 완료.`);
 
       if (repeatCount > 1) {
         let sentCount = 1;
         state.repeatAlertTimer = setInterval(async () => {
           sentCount++;
-          await sendWebPushNotification(clientId, title, body, url);
+          await triggerAllAlertChannels();
           console.log(`[반복 알림] [${clientId}] ${sentCount}/${repeatCount}회 발송 완료.`);
           if (sentCount >= repeatCount) {
             clearInterval(state.repeatAlertTimer);
