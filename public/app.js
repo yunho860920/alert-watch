@@ -360,17 +360,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // User-Agent 또는 쿼리 파라미터 기반 토스 모드 감지 (인앱토스 빌드용 강제 고정)
-  const isTossMode = true;
+  const isTossMode = window.ALERT_WATCH_APPS_IN_TOSS_MODE === true;
 
   // 토스 미니앱 환경 초기 셋업 함수
   function setupTossEnvironment() {
     if (isTossMode) {
       if (tossOnboardingBanner) tossOnboardingBanner.classList.remove('hide');
       if (tossUserPanel) tossUserPanel.classList.remove('hide');
-      if (channelTossCard) channelTossCard.classList.remove('hide');
+      if (channelTossCard) {
+        channelTossCard.classList.remove('hide');
+        channelTossCard.style.display = 'block';
+      }
       
       if (pushOnboardingBanner) pushOnboardingBanner.classList.add('hide');
-      if (channelPwaCard) channelPwaCard.classList.add('hide');
+      if (channelPwaCard) {
+        channelPwaCard.classList.add('hide');
+        channelPwaCard.style.display = 'none';
+      }
       
       // 토스용 가상 userKey 생성 및 로드 (개발/테스트 목적)
       let storedTossKey = localStorage.getItem('alertWatchTossUserKey');
@@ -384,7 +390,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       if (tossOnboardingBanner) tossOnboardingBanner.classList.add('hide');
       if (tossUserPanel) tossUserPanel.classList.add('hide');
-      if (channelTossCard) channelTossCard.classList.add('hide');
+      if (channelTossCard) {
+        channelTossCard.classList.add('hide');
+        channelTossCard.style.display = 'none';
+      }
+      if (channelPwaCard) {
+        channelPwaCard.classList.remove('hide');
+        channelPwaCard.style.display = 'block';
+      }
+      if (pushOnboardingBanner) {
+        pushOnboardingBanner.style.display = '';
+      }
     }
   }
 
@@ -392,6 +408,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   function requestMockNotificationAgreement(params) {
     if (typeof window.requestNotificationAgreement === 'function') {
       return window.requestNotificationAgreement(params);
+    }
+    if (!isLocal) {
+      const error = new Error('Toss notification agreement SDK is not available in this runtime.');
+      setTimeout(() => params.onError && params.onError(error), 0);
+      return () => {};
     }
     
     // 일반 브라우저(로컬 테스트) 폴백 처리

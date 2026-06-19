@@ -48,7 +48,7 @@ function transformAppScript() {
   const appPath = path.join(outputDir, 'app.js');
   let source = fs.readFileSync(appPath, 'utf8');
   const marker = "document.addEventListener('DOMContentLoaded', async () => {\n";
-  const injection = `document.addEventListener('DOMContentLoaded', async () => {\n  const APPS_IN_TOSS_API_BASE_URL = ${JSON.stringify(serverUrl)};\n  const originalFetch = window.fetch.bind(window);\n  window.fetch = (resource, options) => {\n    if (typeof resource === 'string' && resource.startsWith('/api/')) {\n      return originalFetch(APPS_IN_TOSS_API_BASE_URL + resource, options);\n    }\n    return originalFetch(resource, options);\n  };\n`;
+  const injection = `document.addEventListener('DOMContentLoaded', async () => {\n  window.ALERT_WATCH_APPS_IN_TOSS_MODE = true;\n  const APPS_IN_TOSS_API_BASE_URL = ${JSON.stringify(serverUrl)};\n  const originalFetch = window.fetch.bind(window);\n  window.fetch = (resource, options) => {\n    if (typeof resource === 'string' && resource.startsWith('/api/')) {\n      return originalFetch(APPS_IN_TOSS_API_BASE_URL + resource, options);\n    }\n    return originalFetch(resource, options);\n  };\n`;
 
   if (!source.includes(marker)) {
     throw new Error('Could not find the app bootstrap marker in public/app.js.');
