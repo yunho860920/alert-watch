@@ -13,6 +13,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     localStorage.setItem('alertWatchClientId', clientId);
   }
 
+  let clientSecret = localStorage.getItem('alertWatchClientSecret');
+  if (!clientSecret) {
+    const bytes = new Uint8Array(32);
+    if (window.crypto && window.crypto.getRandomValues) {
+      window.crypto.getRandomValues(bytes);
+      clientSecret = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    } else {
+      clientSecret = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+    localStorage.setItem('alertWatchClientSecret', clientSecret);
+  }
+
+  const baseFetch = window.fetch.bind(window);
+  window.fetch = (resource, options = {}) => {
+    const url = typeof resource === 'string' ? resource : resource && resource.url;
+    const shouldAttachClientAuth = typeof url === 'string' && (url.startsWith('/api/') || url.includes('/api/'));
+    if (!shouldAttachClientAuth) {
+      return baseFetch(resource, options);
+    }
+
+    const headers = new Headers(options.headers || (resource instanceof Request ? resource.headers : undefined));
+    headers.set('X-Client-Id', clientId);
+    headers.set('X-Client-Secret', clientSecret);
+
+    return baseFetch(resource, {
+      ...options,
+      headers
+    });
+  };
+
   const monitoringPulse = document.getElementById('monitoring-pulse');
 
   const monitoringText = document.getElementById('monitoring-text');

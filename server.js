@@ -8,10 +8,35 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const webpush = require('web-push');
 const scraper = require('./scraper');
+const { validateUrlForSsrf, isValidClientId } = require('./security');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const appsInTossAllowedOrigins = (process.env.APPS_IN_TOSS_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowsAllOrigins = appsInTossAllowedOrigins.length === 0 || appsInTossAllowedOrigins.includes('*');
+  const isAllowedOrigin = origin && (allowsAllOrigins || appsInTossAllowedOrigins.includes(origin));
+
+  if (isAllowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', allowsAllOrigins ? '*' : origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Client-Id, X-Client-Secret, X-Admin-Token');
+  }
+
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
+  next();
+});
 
 // 로컬 테스트용 가상 상품 상태 객체 (메모리 상태 관리)
 let mockProductState = {
@@ -24,6 +49,124 @@ let mockProductState = {
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+const isProduction = process.env.NODE_ENV === 'production';
+const enableDevTools = process.env.ENABLE_DEV_TOOLS === 'true' || !isProduction;
+const publicApiPaths = new Set(['/api/health', '/api/vapid-public-key']);
+const adminApiPaths = new Set([
+  '/api/settings/notifications',
+  '/api/test/email',
+  '/api/test/telegram'
+]);
+const devOnlyPaths = new Set([
+  '/mock-product',
+  '/api/mock-product/state',
+  '/api/mock-product/toggle',
+  '/api/temp-thumbnail',
+  '/api/save-thumbnail'
+]);
+
+function readJsonFile(filePath, fallback = {}) {
+  if (!fs.existsSync(filePath)) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    console.error(`[JSON read failed] ${path.basename(filePath)}:`, e.message);
+    return fallback;
+  }
+}
+
+function writeJsonFile(filePath, data) {
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+}
+
+function hashClientSecret(secret) {
+  return crypto.createHash('sha256').update(String(secret || '')).digest('hex');
+}
+
+function isValidClientSecret(secret) {
+  return typeof secret === 'string' && /^[A-Za-z0-9_-]{32,128}$/.test(secret);
+}
+
+function getRequestClientId(req) {
+  return req.body?.clientId || req.query?.clientId || req.headers['x-client-id'];
+}
+
+function requireAdminToken(req, res) {
+  const expectedToken = process.env.ADMIN_API_TOKEN;
+  if (!isProduction && !expectedToken) {
+    return true;
+  }
+  const providedToken = req.headers['x-admin-token'];
+  if (!expectedToken || providedToken !== expectedToken) {
+    res.status(403).json({ error: '관리자 인증이 필요합니다.' });
+    return false;
+  }
+  return true;
+}
+
+function requireClientAuth(req, res, next) {
+  if (!req.path.startsWith('/api/') || publicApiPaths.has(req.path)) {
+    next();
+    return;
+  }
+
+  if (adminApiPaths.has(req.path)) {
+    if (requireAdminToken(req, res)) {
+      next();
+    }
+    return;
+  }
+
+  const clientId = getRequestClientId(req);
+  const clientSecret = req.headers['x-client-secret'];
+
+  if (!isValidClientId(clientId)) {
+    res.status(400).json({ error: '유효하지 않은 clientId입니다.' });
+    return;
+  }
+
+  if (!isValidClientSecret(clientSecret)) {
+    res.status(401).json({ error: '클라이언트 인증 정보가 필요합니다.' });
+    return;
+  }
+
+  const configs = readJsonFile(configPath, {});
+  const config = configs[clientId];
+  const secretHash = hashClientSecret(clientSecret);
+
+  if (config?.clientSecretHash && config.clientSecretHash !== secretHash) {
+    res.status(403).json({ error: 'clientId 인증에 실패했습니다.' });
+    return;
+  }
+
+  if (config && !config.clientSecretHash) {
+    config.clientSecretHash = secretHash;
+    configs[clientId] = config;
+    try {
+      writeJsonFile(configPath, configs);
+    } catch (e) {
+      res.status(500).json({ error: '클라이언트 인증 정보를 저장하지 못했습니다.' });
+      return;
+    }
+  }
+
+  req.clientId = clientId;
+  req.clientSecretHash = secretHash;
+  next();
+}
+
+app.use((req, res, next) => {
+  if (!enableDevTools && devOnlyPaths.has(req.path)) {
+    res.status(404).json({ error: '개발용 기능은 운영 환경에서 비활성화되어 있습니다.' });
+    return;
+  }
+  next();
+});
+
+app.use(requireClientAuth);
 
 function maskValue(val, visibleLength = 4) {
   if (!val) return '';
@@ -230,6 +373,7 @@ app.get('/api/status', (req, res) => {
   const { clientId, currentEndpoint } = req.query;
 
   // 에셋 동적 동기화 우회 처리
+  if (enableDevTools) {
   const srcSleeping = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\6e7e13dd-8dd0-4fc3-9005-80bb3d3c8fbf\\sleeping_detective_shiba_2d_1781627118802.png";
   const destSleeping = path.join(__dirname, 'public', 'sleeping_detective_shiba_2d.png');
   const srcHappy = "C:\\Users\\GN\\.gemini\\antigravity-ide\\brain\\6e7e13dd-8dd0-4fc3-9005-80bb3d3c8fbf\\happy_detective_shiba_2d_1781627135838.png";
@@ -251,6 +395,8 @@ app.get('/api/status', (req, res) => {
     }
   } catch (e) {
     console.error('[에셋 동적 동기화 실패] 에러:', e.message);
+  }
+
   }
 
   if (!clientId) {
@@ -298,8 +444,14 @@ app.get('/api/status', (req, res) => {
 });
 
 // 4. 감시 타겟 설정 변경 및 브라우저 구독 추가 API
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', async (req, res) => {
   const { clientId, targetUrl, keyword, cssSelector, condition, intervalSeconds, subscription, deviceInfo, alertRepeatCount, alertRepeatIntervalSeconds } = req.body;
+  if (targetUrl) {
+    const urlSafety = await validateUrlForSsrf(targetUrl);
+    if (!urlSafety.valid) {
+      return res.status(400).json({ error: `안전하지 않은 감시 URL입니다: ${urlSafety.reason}` });
+    }
+  }
   if (!clientId) {
     return res.status(400).json({ error: 'clientId가 누락되었습니다.' });
   }
@@ -326,6 +478,7 @@ app.post('/api/settings', (req, res) => {
     alertRepeatIntervalSeconds: parseInt(alertRepeatIntervalSeconds, 10) || 30,
     subscriptions: existingConfig.subscriptions || [],
     tossUserKeys: existingConfig.tossUserKeys || [],
+    clientSecretHash: existingConfig.clientSecretHash || req.clientSecretHash,
     isMonitoring: true
   };
 
@@ -387,6 +540,7 @@ app.post('/api/toss/register', (req, res) => {
     alertRepeatIntervalSeconds: 30,
     subscriptions: [],
     tossUserKeys: [],
+    clientSecretHash: req.clientSecretHash,
     isMonitoring: false
   };
 
@@ -784,6 +938,10 @@ app.post('/api/history/clear', (req, res) => {
 // 7.7. 토스 알림 즉시 테스트 API
 app.post('/api/test/toss', async (req, res) => {
   const { userKey } = req.body;
+  const registeredTossKeys = readJsonFile(path.join(__dirname, 'config.json'), {})[req.clientId]?.tossUserKeys || [];
+  if (userKey && !registeredTossKeys.includes(userKey)) {
+    return res.status(403).json({ error: '등록된 Toss userKey만 테스트 발송할 수 있습니다.' });
+  }
   if (!userKey) {
     return res.status(400).json({ error: '테스트용 토스 userKey가 누락되었습니다.' });
   }
@@ -827,6 +985,18 @@ app.post('/api/save-thumbnail', (req, res) => {
 // 8. 감시 대상 사이트의 1회 자가 진단 API (지능형 자동 탐지 고도화)
 app.post('/api/check-site', async (req, res) => {
   const { targetUrl, keyword, cssSelector, condition } = req.body;
+  if (targetUrl) {
+    const urlSafety = await validateUrlForSsrf(targetUrl);
+    if (!urlSafety.valid) {
+      return res.status(400).json({
+        success: false,
+        isAccessible: false,
+        statusCode: null,
+        isKeywordFound: false,
+        message: `안전하지 않은 진단 URL입니다: ${urlSafety.reason}`
+      });
+    }
+  }
 
   if (!targetUrl || !keyword) {
     return res.status(400).json({ error: '진단을 위해 사이트 주소와 키워드를 모두 입력해 주세요.' });

@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const cheerio = require('cheerio');
 const webpush = require('web-push');
+const { validateUrlForSsrf } = require('./security');
 require('dotenv').config();
 
 // 사용자별 모니터링 상태 맵
@@ -212,6 +213,13 @@ async function checkCancellation(clientId) {
   }
 
   const state = getOrCreateMonitorState(clientId);
+  const urlSafety = await validateUrlForSsrf(url);
+  if (!urlSafety.valid) {
+    state.errorCount++;
+    console.error(`[감시 보안 차단] [${clientId}] 안전하지 않은 URL 요청을 차단했습니다: ${urlSafety.reason}`);
+    return;
+  }
+
   state.lastCheckTime = new Date();
   const activeAvailableOptions = []; // 현재 사이클에서 추출한 구매 가능 옵션
   const activeAllOptions = []; // 현재 사이클에서 추출한 전체 옵션 상태 목록
