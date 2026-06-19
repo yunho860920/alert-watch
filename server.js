@@ -66,6 +66,15 @@ const devOnlyPaths = new Set([
   '/api/save-thumbnail'
 ]);
 
+function isMockTossUserKey(userKey) {
+  return /^tossUser_\d{8}$/.test(String(userKey || ''));
+}
+
+function isValidTossUserKey(userKey) {
+  const value = String(userKey || '').trim();
+  return /^[A-Za-z0-9._:-]{8,256}$/.test(value);
+}
+
 function readJsonFile(filePath, fallback = {}) {
   if (!fs.existsSync(filePath)) {
     return fallback;
@@ -514,9 +523,18 @@ app.post('/api/settings', async (req, res) => {
 
 // 4.1. 토스 사용자 알림 등록 API
 app.post('/api/toss/register', (req, res) => {
-  const { clientId, userKey } = req.body;
+  const { clientId, userKey: rawUserKey } = req.body;
+  const userKey = String(rawUserKey || '').trim();
   if (!clientId || !userKey) {
     return res.status(400).json({ error: 'clientId와 userKey가 누락되었습니다.' });
+  }
+
+  if (!isValidTossUserKey(userKey)) {
+    return res.status(400).json({ error: '유효하지 않은 Toss userKey입니다.' });
+  }
+
+  if (isProduction && !process.env.ALLOW_MOCK_TOSS_USER_KEYS && isMockTossUserKey(userKey)) {
+    return res.status(400).json({ error: '운영 환경에서는 mock Toss userKey를 등록할 수 없습니다.' });
   }
 
   const configPath = path.join(__dirname, 'config.json');

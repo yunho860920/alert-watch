@@ -380,12 +380,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // 토스용 가상 userKey 생성 및 로드 (개발/테스트 목적)
       let storedTossKey = localStorage.getItem('alertWatchTossUserKey');
-      if (!storedTossKey) {
+      if (!storedTossKey && isLocal) {
         storedTossKey = 'tossUser_' + Math.floor(10000000 + Math.random() * 90000000);
         localStorage.setItem('alertWatchTossUserKey', storedTossKey);
       }
       if (setupTossUserkey) {
-        setupTossUserkey.value = storedTossKey;
+        setupTossUserkey.value = storedTossKey || '';
       }
     } else {
       if (tossOnboardingBanner) tossOnboardingBanner.classList.add('hide');
@@ -405,6 +405,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // 모의 토스 알림 동의 API 함수 (인앱용 Mock SDK)
+  function extractTossUserKey(payload) {
+    const candidates = [
+      payload && payload.userKey,
+      payload && payload.tossUserKey,
+      payload && payload.agreement && payload.agreement.userKey,
+      payload && payload.data && payload.data.userKey,
+      payload && payload.result && payload.result.userKey
+    ];
+
+    const found = candidates.find(value => typeof value === 'string' && value.trim());
+    return found ? found.trim() : '';
+  }
+
   function requestMockNotificationAgreement(params) {
     if (typeof window.requestNotificationAgreement === 'function') {
       return window.requestNotificationAgreement(params);
@@ -419,7 +432,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const confirmed = confirm("[Mock Toss SDK] 알림 수신에 동의하시겠습니까?\n(확인을 누르면 수신 동의가 완료됩니다.)");
     if (confirmed) {
       setTimeout(() => {
-        params.onEvent({ type: 'newAgreement' });
+        params.onEvent({ type: 'newAgreement', userKey: localStorage.getItem('alertWatchTossUserKey') });
       }, 300);
     } else {
       setTimeout(() => {
@@ -434,18 +447,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 토스 알림 동의 처리 이벤트 핸들러
   async function handleTossAgreement() {
-    const userKey = localStorage.getItem('alertWatchTossUserKey');
-    if (!userKey || isBtnLocked) return;
+    if (isBtnLocked) return;
     
     isBtnLocked = true;
     const cleanup = requestMockNotificationAgreement({
       options: {
         templateCode: 'ALERT_WATCH_CANCELLATION',
       },
-      onEvent: async ({ type }) => {
+      onEvent: async (event) => {
+        const { type } = event || {};
         if (type === 'newAgreement' || type === 'alreadyAgreed') {
           console.log('토스 알림 수신 동의 획득 완료:', type);
           try {
+            const userKey = extractTossUserKey(event) || (isLocal ? localStorage.getItem('alertWatchTossUserKey') : '');
+            if (!userKey) {
+              throw new Error('Toss SDK에서 userKey를 확인하지 못했습니다.');
+            }
+            localStorage.setItem('alertWatchTossUserKey', userKey);
+            if (setupTossUserkey) {
+              setupTossUserkey.value = userKey;
+            }
             const response = await fetch('/api/toss/register', {
               method: 'POST',
               headers: {
