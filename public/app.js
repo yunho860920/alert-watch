@@ -361,6 +361,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // User-Agent 또는 쿼리 파라미터 기반 토스 모드 감지 (인앱토스 빌드용 강제 고정)
   const isTossMode = window.ALERT_WATCH_APPS_IN_TOSS_MODE === true;
+  const tossNotificationTemplateCode = window.ALERT_WATCH_TOSS_NOTIFICATION_TEMPLATE_CODE || 'ALERT_WATCH_CANCELLATION';
 
   // 토스 미니앱 환경 초기 셋업 함수
   function setupTossEnvironment() {
@@ -418,9 +419,147 @@ document.addEventListener('DOMContentLoaded', async () => {
     return found ? found.trim() : '';
   }
 
+  function ensureGraniteNativeEmitter() {
+    if (window.__GRANITE_NATIVE_EMITTER && typeof window.__GRANITE_NATIVE_EMITTER.on === 'function') {
+      return window.__GRANITE_NATIVE_EMITTER;
+    }
+
+    const events = {};
+    window.__GRANITE_NATIVE_EMITTER = {
+      emit(eventName, payload) {
+        const handlers = events[eventName] || [];
+        handlers.forEach(handler => handler(payload));
+      },
+      on(eventName, handler) {
+        if (!events[eventName]) {
+          events[eventName] = [];
+        }
+        events[eventName].push(handler);
+        return () => {
+          events[eventName] = (events[eventName] || []).filter(current => current !== handler);
+        };
+      }
+    };
+    return window.__GRANITE_NATIVE_EMITTER;
+  }
+
+  function createBridgeEventId() {
+    return Math.random().toString(36).substring(2, 15);
+  }
+
+  function deserializeBridgeError(error) {
+    if (error && error.__isError) {
+      const deserialized = new Error(error.message);
+      Object.keys(error).forEach(key => {
+        deserialized[key] = error[key];
+      });
+      return deserialized;
+    }
+    return error instanceof Error ? error : new Error(String(error || 'Unknown Toss bridge error'));
+  }
+
+  function postTossBridgeMessage(message) {
+    if (!window.ReactNativeWebView || typeof window.ReactNativeWebView.postMessage !== 'function') {
+      throw new Error('ReactNativeWebView is not available in this runtime.');
+    }
+    ensureGraniteNativeEmitter();
+    window.ReactNativeWebView.postMessage(JSON.stringify(message));
+  }
+
+  function requestNotificationAgreementViaBridge(params) {
+    const eventId = createBridgeEventId();
+    const emitter = ensureGraniteNativeEmitter();
+    const removes = [
+      emitter.on(`requestNotificationAgreement/onEvent/${eventId}`, data => {
+        params.onEvent(data);
+      }),
+      emitter.on(`requestNotificationAgreement/onError/${eventId}`, error => {
+        params.onError(deserializeBridgeError(error));
+      })
+    ];
+
+    postTossBridgeMessage({
+      type: 'addEventListener',
+      functionName: 'requestNotificationAgreement',
+      eventId,
+      args: params.options
+    });
+
+    return () => {
+      try {
+        postTossBridgeMessage({
+          type: 'removeEventListener',
+          functionName: 'requestNotificationAgreement',
+          eventId
+        });
+      } catch (error) {
+        console.warn('Toss notification agreement cleanup failed:', error);
+      }
+      removes.forEach(remove => remove());
+    };
+  }
+
+  function callTossBridgeMethod(functionName, args = []) {
+    return new Promise((resolve, reject) => {
+      const eventId = createBridgeEventId();
+      const emitter = ensureGraniteNativeEmitter();
+      const cleanup = () => removes.forEach(remove => remove());
+      const removes = [
+        emitter.on(`${functionName}/resolve/${eventId}`, data => {
+          cleanup();
+          resolve(data);
+        }),
+        emitter.on(`${functionName}/reject/${eventId}`, error => {
+          cleanup();
+          reject(deserializeBridgeError(error));
+        })
+      ];
+
+      try {
+        postTossBridgeMessage({
+          type: 'method',
+          functionName,
+          eventId,
+          args
+        });
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    });
+  }
+
+  async function getTossUserKeyFromBridge() {
+    const result = await callTossBridgeMethod('getAnonymousKey');
+    if (!result || result === 'ERROR') {
+      return '';
+    }
+    if (typeof result === 'string') {
+      return result.trim();
+    }
+    if (typeof result.hash === 'string') {
+      return result.hash.trim();
+    }
+    return '';
+  }
+
+  async function resolveTossUserKey(event) {
+    const eventUserKey = extractTossUserKey(event);
+    if (eventUserKey) {
+      return eventUserKey;
+    }
+    if (isLocal) {
+      return localStorage.getItem('alertWatchTossUserKey') || '';
+    }
+    return getTossUserKeyFromBridge();
+  }
+
   function requestMockNotificationAgreement(params) {
     if (typeof window.requestNotificationAgreement === 'function') {
       return window.requestNotificationAgreement(params);
+    }
+    if (window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function') {
+      return requestNotificationAgreementViaBridge(params);
     }
     if (!isLocal) {
       const error = new Error('Toss notification agreement SDK is not available in this runtime.');
@@ -452,14 +591,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     isBtnLocked = true;
     const cleanup = requestMockNotificationAgreement({
       options: {
-        templateCode: 'ALERT_WATCH_CANCELLATION',
+        templateCode: tossNotificationTemplateCode,
       },
       onEvent: async (event) => {
         const { type } = event || {};
         if (type === 'newAgreement' || type === 'alreadyAgreed') {
           console.log('토스 알림 수신 동의 획득 완료:', type);
           try {
-            const userKey = extractTossUserKey(event) || (isLocal ? localStorage.getItem('alertWatchTossUserKey') : '');
+            const userKey = await resolveTossUserKey(event);
             if (!userKey) {
               throw new Error('Toss SDK에서 userKey를 확인하지 못했습니다.');
             }
@@ -483,6 +622,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
           } catch (e) {
             console.error('서버 연동 오류:', e);
+            alert(`토스 알림 계정 연동 중 오류가 발생했습니다: ${e.message}`);
           }
         } else if (type === 'agreementRejected') {
           console.log('토스 알림 수신 동의 거부');
@@ -492,7 +632,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       },
       onError: (error) => {
         console.error('토스 알림 동의 에러:', error);
-        alert('알림 동의 요청 중 오류가 발생했습니다.');
+        alert(`알림 동의 요청 중 오류가 발생했습니다: ${error.message || error}`);
         cleanup();
         isBtnLocked = false;
       },

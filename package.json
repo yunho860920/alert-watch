@@ -1,12 +1,14 @@
 {
-  "name": "cancellation-alert",
+  "name": "soldoutdetectivedog",
   "version": "1.0.0",
   "description": "Imweb ticket cancellation email alert web app",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "build:ait": "node scripts/build_apps_in_toss.js",
+    "prepare:ait": "node scripts/build_apps_in_toss.js --prepare-only",
+    "build:ait": "node node_modules/@apps-in-toss/web-framework/ait.js build && node scripts/sync_ait_deployment_id.js",
+    "build:ait:zip": "node scripts/build_apps_in_toss.js",
     "copy-assets": "node copy_assets.js",
     "copy-shiba": "node scratch/copy_shiba.js"
   },
@@ -18,5 +20,8 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^9.0.1",
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@apps-in-toss/web-framework": "^2.9.2"
   }
 }

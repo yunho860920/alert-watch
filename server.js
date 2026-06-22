@@ -87,6 +87,14 @@ function readJsonFile(filePath, fallback = {}) {
   }
 }
 
+function getAppsInTossDeploymentId() {
+  if (process.env.APPS_IN_TOSS_DEPLOYMENT_ID || process.env.TOSS_DEPLOYMENT_ID || process.env.DEPLOYMENT_ID) {
+    return process.env.APPS_IN_TOSS_DEPLOYMENT_ID || process.env.TOSS_DEPLOYMENT_ID || process.env.DEPLOYMENT_ID;
+  }
+
+  return readJsonFile(path.join(__dirname, 'app.json'), {}).deploymentId || '';
+}
+
 function writeJsonFile(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
 }
@@ -966,9 +974,9 @@ app.post('/api/test/toss', async (req, res) => {
 
   try {
     const notifier = require('./notifier');
-    const success = await notifier.sendTossMessage(userKey, process.env.TOSS_TEMPLATE_SET_CODE, {
+    const success = await notifier.sendTossTestMessage(userKey, process.env.TOSS_TEMPLATE_SET_CODE, getAppsInTossDeploymentId(), {
       productName: 'Mock 테스트 상품',
-      url: 'http://localhost:3000/mock-product'
+      url: process.env.APPS_IN_TOSS_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://alert-watch.onrender.com'
     });
 
     if (success) {

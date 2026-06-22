@@ -1,11 +1,9 @@
-// Nodemailer를 사용하여 사용자에게 이메일 알림을 전송하는 모듈
 const nodemailer = require('nodemailer');
 const axios = require('axios');
+const https = require('https');
+const fs = require('fs');
 require('dotenv').config();
 
-/**
- * 이메일을 전송합니다.
- */
 async function sendEmail(subject, text, html) {
   const host = process.env.SMTP_HOST;
   const port = process.env.SMTP_PORT || 587;
@@ -14,41 +12,36 @@ async function sendEmail(subject, text, html) {
   const receiver = process.env.RECEIVER_EMAIL;
 
   if (!host || !user || !pass || !receiver) {
-    console.error('[이메일 오류] 이메일 발신에 필요한 환경 변수가 .env 파일에 누락되어 전송을 취소합니다.');
+    console.error('[Email error] Required SMTP environment variables are missing.');
     return false;
   }
 
   const transporter = nodemailer.createTransport({
-    host: host,
+    host,
     port: parseInt(port, 10),
     secure: process.env.SMTP_SECURE === 'true',
     auth: {
-      user: user,
-      pass: pass
+      user,
+      pass
     }
   });
 
-  const mailOptions = {
-    from: `"취소표 알리미" <${user}>`,
-    to: receiver,
-    subject: subject,
-    text: text,
-    html: html
-  };
-
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`[이메일 성공] 알림 이메일 전송이 완료되었습니다. MessageID: ${info.messageId}`);
+    const info = await transporter.sendMail({
+      from: `"Soldout Detective Dog" <${user}>`,
+      to: receiver,
+      subject,
+      text,
+      html
+    });
+    console.log(`[Email success] Message sent. messageId=${info.messageId}`);
     return true;
   } catch (error) {
-    console.error('[이메일 오류] 메일 전송 중 에러가 발생했습니다.', error);
+    console.error('[Email error] Send failed:', error.message);
     return false;
   }
 }
 
-/**
- * 텔레그램 메시지를 전송합니다.
- */
 async function sendTelegram(text) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -57,64 +50,146 @@ async function sendTelegram(text) {
     return false;
   }
 
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
   try {
-    const response = await axios.post(url, {
+    const response = await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
       chat_id: chatId,
-      text: text,
+      text,
       parse_mode: 'HTML'
     });
+
     if (response.data && response.data.ok) {
-      console.log('[텔레그램 성공] 알림 메시지 전송 완료');
+      console.log('[Telegram success] Message sent.');
       return true;
     }
+    console.error('[Telegram error] Unexpected response:', response.data);
     return false;
   } catch (error) {
-    console.error('[텔레그램 오류] 메시지 전송 중 에러:', error.message);
+    console.error('[Telegram error] Send failed:', error.message);
     return false;
   }
 }
 
-/**
- * 토스 스마트 발송 API를 사용하여 기능성 알림 메시지를 발송합니다.
- */
-async function sendTossMessage(userKey, templateSetCode, context) {
+function readPemEnv(value, pathValue) {
+  if (pathValue) {
+    return fs.readFileSync(pathValue, 'utf8');
+  }
+
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = String(value).trim();
+  if (trimmed.includes('-----BEGIN')) {
+    return trimmed.replace(/\\n/g, '\n');
+  }
+
+  return Buffer.from(trimmed, 'base64').toString('utf8');
+}
+
+function createTossHttpsAgent() {
+  const cert = readPemEnv(process.env.TOSS_MTLS_CERT, process.env.TOSS_MTLS_CERT_PATH);
+  const key = readPemEnv(process.env.TOSS_MTLS_KEY, process.env.TOSS_MTLS_KEY_PATH);
+  const ca = readPemEnv(process.env.TOSS_MTLS_CA, process.env.TOSS_MTLS_CA_PATH);
+
+  if (!cert || !key) {
+    console.error('[Toss alert error] mTLS certificate/key is missing. Set TOSS_MTLS_CERT and TOSS_MTLS_KEY, or TOSS_MTLS_CERT_PATH and TOSS_MTLS_KEY_PATH.');
+    return null;
+  }
+
+  return new https.Agent({
+    cert,
+    key,
+    ca,
+    passphrase: process.env.TOSS_MTLS_PASSPHRASE || undefined,
+    rejectUnauthorized: process.env.TOSS_MTLS_REJECT_UNAUTHORIZED !== 'false'
+  });
+}
+
+function getTossTemplateSetCode(templateSetCode) {
+  return templateSetCode || process.env.TOSS_TEMPLATE_SET_CODE || 'ALERT_WATCH_CANCELLATION';
+}
+
+function getAxiosErrorDetail(error) {
+  if (error.response) {
+    return {
+      status: error.response.status,
+      data: error.response.data
+    };
+  }
+
+  return {
+    message: error.message
+  };
+}
+
+async function postTossSmartMessage(pathname, userKey, body) {
   const baseUrl = process.env.TOSS_API_BASE_URL || 'https://apps-in-toss-api.toss.im';
-  const url = `${baseUrl}/api-partner/v1/apps-in-toss/messenger/send-message`;
+  const url = `${baseUrl.replace(/\/+$/, '')}${pathname}`;
 
   if (!userKey) {
-    console.error('[토스 알림 오류] 발송 대상 userKey가 누락되었습니다.');
+    console.error('[Toss alert error] userKey is missing.');
+    return false;
+  }
+
+  const httpsAgent = createTossHttpsAgent();
+  if (!httpsAgent) {
     return false;
   }
 
   try {
-    const response = await axios.post(url, {
-      templateSetCode: templateSetCode || process.env.TOSS_TEMPLATE_SET_CODE || 'ALERT_WATCH_CANCELLATION',
-      context: context
-    }, {
+    const response = await axios.post(url, body, {
       headers: {
         'Content-Type': 'application/json',
         'x-toss-user-key': userKey
       },
-      timeout: 5000
+      httpsAgent,
+      timeout: 10000
     });
 
     if (response.data && response.data.resultType === 'SUCCESS') {
-      console.log(`[토스 알림 성공] 메시지 전송 완료. userKey: ${userKey}`);
+      console.log(`[Toss alert success] Message accepted. userKey=${userKey}`);
       return true;
-    } else {
-      console.error('[토스 알림 실패] 응답 에러:', response.data.error || response.data);
-      return false;
     }
+
+    console.error('[Toss alert error] API returned failure:', response.data && (response.data.error || response.data));
+    return false;
   } catch (error) {
-    console.error('[토스 알림 오류] 전송 실패:', error.message);
+    console.error('[Toss alert error] Send failed:', getAxiosErrorDetail(error));
     return false;
   }
+}
+
+async function sendTossMessage(userKey, templateSetCode, context) {
+  return postTossSmartMessage(
+    '/api-partner/v1/apps-in-toss/messenger/send-message',
+    userKey,
+    {
+      templateSetCode: getTossTemplateSetCode(templateSetCode),
+      context: context || {}
+    }
+  );
+}
+
+async function sendTossTestMessage(userKey, templateSetCode, deploymentId, context) {
+  if (!deploymentId) {
+    console.error('[Toss alert error] deploymentId is required for send-test-message.');
+    return false;
+  }
+
+  return postTossSmartMessage(
+    '/api-partner/v1/apps-in-toss/messenger/send-test-message',
+    userKey,
+    {
+      templateSetCode: getTossTemplateSetCode(templateSetCode),
+      deploymentId,
+      context: context || {}
+    }
+  );
 }
 
 module.exports = {
   sendEmail,
   sendTelegram,
-  sendTossMessage
+  sendTossMessage,
+  sendTossTestMessage
 };
-

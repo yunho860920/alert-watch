@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1",
+  "appId": "b509144c-69cd-427b-a950-3af7266702ef",
+  "version": "1.0.0",
+  "sdk": {
+    "minRequiredVersion": "2.0.0"
+  },
+  "permissions": [],
+  "entry": "index.html",
+  "deploymentId": "019ef04d-748f-71f9-9b81-c92b37896ad8"
+}
